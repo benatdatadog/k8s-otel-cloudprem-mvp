@@ -111,10 +111,10 @@ spec:
             - containerPort: 8126  # APM
               name: apm
               protocol: TCP
-            - containerPort: 4317  # OTLP gRPC
+            - containerPort: 4417  # OTLP gRPC (Datadog standard port)
               name: otlp-grpc
               protocol: TCP
-            - containerPort: 4318  # OTLP HTTP
+            - containerPort: 4418  # OTLP HTTP (Datadog standard port)
               name: otlp-http
               protocol: TCP
           env:
@@ -137,11 +137,15 @@ spec:
                   fieldPath: spec.nodeName
             - name: KUBERNETES
               value: "true"
-            # OTLP Receiver - Enable receiving OTLP data
+            # OTLP Receiver - Enable receiving OTLP data (port 4417 per Datadog docs)
+            - name: DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENABLED
+              value: "true"
             - name: DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT
-              value: "0.0.0.0:4317"
+              value: "0.0.0.0:4417"
+            - name: DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENABLED
+              value: "true"
             - name: DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT
-              value: "0.0.0.0:4318"
+              value: "0.0.0.0:4418"
             # Logs - Send to CloudPrem instead of Datadog SaaS
             - name: DD_LOGS_ENABLED
               value: "true"
@@ -252,12 +256,12 @@ spec:
       targetPort: 8126
       protocol: TCP
     - name: otlp-grpc
-      port: 4317
-      targetPort: 4317
+      port: 4417
+      targetPort: 4417
       protocol: TCP
     - name: otlp-http
-      port: 4318
-      targetPort: 4318
+      port: 4418
+      targetPort: 4418
       protocol: TCP
   # Use ClusterIP so OTEL Collector can reach it
   type: ClusterIP

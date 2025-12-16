@@ -47,9 +47,11 @@ data:
           span_name_as_resource_name: true
         hostname: "otel-demo-cluster"
 
-      # OTLP exporter to Datadog Agent (for logs)
+      # OTLP exporter to Datadog Agent (for logs → CloudPrem)
+      # DD Agent receives OTLP logs and forwards to CloudPrem indexer
+      # Port 4417 is the Datadog standard OTLP gRPC port
       otlp/datadog-agent:
-        endpoint: "datadog-agent:4317"
+        endpoint: "datadog-agent:4417"
         tls:
           insecure: true
 
@@ -74,12 +76,12 @@ data:
           receivers: [otlp]
           processors: [memory_limiter, batch]
           exporters: [datadog]
-        # Logs are now collected by DD Agent directly from container stdout
-        # No need for OTEL logs pipeline - DD Agent handles it natively
+        # Logs: DD Agent collects from container stdout → CloudPrem
+        # (DD Agent OTLP receiver doesn't support logs, only traces/metrics)
         logs:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [debug]  # Keep debug for visibility, DD Agent collects from containers
+          exporters: [debug]
       telemetry:
         logs:
           level: info

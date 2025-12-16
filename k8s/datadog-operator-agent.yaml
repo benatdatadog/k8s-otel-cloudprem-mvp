@@ -1,0 +1,47 @@
+---
+# DatadogAgent CRD - Deploys DD Agent via Datadog Operator
+# This enables OTLP receiver for logs → CloudPrem
+apiVersion: datadoghq.com/v2alpha1
+kind: DatadogAgent
+metadata:
+  name: datadog
+  namespace: otel-demo
+spec:
+  global:
+    clusterName: otel-demo
+    site: datadoghq.com
+    credentials:
+      apiSecret:
+        secretName: datadog-secrets
+        keyName: api-key
+    env:
+      # CloudPrem endpoint for logs
+      - name: DD_LOGS_CONFIG_LOGS_DD_URL
+        value: http://cloudprem-indexer.cloudprem.svc.cluster.local:7280
+      # Ensure host tags are added to logs
+      - name: DD_LOGS_CONFIG_EXPECTED_TAGS_DURATION
+        value: "100000"
+
+  features:
+    # Enable container log collection
+    logCollection:
+      enabled: true
+      containerCollectAll: true
+
+    # OTLP receiver for logs from OTEL Collector
+    otlp:
+      receiver:
+        protocols:
+          grpc:
+            enabled: true
+            endpoint: 0.0.0.0:4417
+
+    # Prometheus scraping
+    prometheusScrape:
+      enabled: true
+      enableServiceEndpoints: true
+
+    # APM for traces
+    apm:
+      enabled: true
+

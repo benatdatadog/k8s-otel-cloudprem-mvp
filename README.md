@@ -15,15 +15,17 @@ A minimal proof-of-concept demonstrating OpenTelemetry instrumentation on Kubern
 │  │  (Python)    │  :4317  │                  │                               │
 │  └──────────────┘         └──────────────────┘                               │
 │         │                                                                     │
-│         │ stdout                                                              │
+│         │ stdout (container logs)                                             │
 │         ▼                                                                     │
 │  ┌──────────────┐         ┌──────────────────┐         ┌──────────────────┐  │
 │  │  DD Agent    │──Logs──▶│    CloudPrem     │◀───────▶│   Datadog SaaS   │  │
-│  │  (DaemonSet) │         │    (Indexer)     │         │  (Log Explorer)  │  │
+│  │  (Operator)  │         │    (Indexer)     │         │  (Log Explorer)  │  │
 │  └──────────────┘         └──────────────────┘         └──────────────────┘  │
 │                                                                               │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Note:** The DD Agent OTLP receiver only supports traces/metrics, not logs. Logs are collected via container stdout.
 
 ## Components
 
