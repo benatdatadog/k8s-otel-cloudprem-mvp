@@ -11,51 +11,51 @@ A minimal proof-of-concept demonstrating OpenTelemetry instrumentation on Kubern
 │                      Docker Desktop Kubernetes                                │
 │                                                                               │
 │  ┌──────────────┐         ┌──────────────────┐                               │
-│  │  Sample App  │──OTLP──▶│  OTEL Collector  │────Traces/Metrics────▶ DD SaaS│
+│  │  Sample App  │──OTLP──▶│  OTEL Collector  │──Traces/Metrics──▶ DD SaaS    │
 │  │  (Python)    │  :4317  │                  │                               │
-│  └──────────────┘         └──────────────────┘                               │
-│         │                                                                     │
-│         │ stdout (container logs)                                             │
-│         ▼                                                                     │
-│  ┌──────────────┐         ┌──────────────────┐         ┌──────────────────┐  │
-│  │  DD Agent    │──Logs──▶│    CloudPrem     │◀───────▶│   Datadog SaaS   │  │
-│  │  (Operator)  │         │    (Indexer)     │         │  (Log Explorer)  │  │
-│  └──────────────┘         └──────────────────┘         └──────────────────┘  │
-│                                                                               │
+│  └──────────────┘         └────────┬─────────┘                               │
+│         │                          │                                          │
+│         │ stdout                   │ OTLP Logs                                │
+│         ▼                          ▼                                          │
+│  ┌──────────────────────────────────────────┐                                │
+│  │           Datadog Agent (Operator)        │                                │
+│  │  • Collects container logs (stdout)       │                                │
+│  │  • Receives OTLP logs on :4317            │                                │
+│  └────────────────────┬─────────────────────┘                                │
+│                       │                                                       │
+│                       ▼                                                       │
+│  ┌──────────────────┐         ┌──────────────────┐                           │
+│  │    CloudPrem     │◀───────▶│   Datadog SaaS   │                           │
+│  │    (Indexer)     │         │  (Log Explorer)  │                           │
+│  └──────────────────┘         └──────────────────┘                           │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
-
-**Note:** The DD Agent OTLP receiver only supports traces/metrics, not logs. Logs are collected via container stdout.
 
 ## Components
 
 | Component | Purpose | Namespace |
 |-----------|---------|-----------|
 | **Sample App** | Python Flask app with OTEL instrumentation | otel-demo |
-| **OTEL Collector** | Receives OTLP, exports traces/metrics to Datadog SaaS | otel-demo |
-| **Datadog Agent** | Collects container logs, sends to CloudPrem | otel-demo |
+| **OTEL Collector** | Receives OTLP, exports traces/metrics to DD SaaS, logs to DD Agent | otel-demo |
+| **Datadog Agent** | Collects container + OTLP logs, sends to CloudPrem | otel-demo |
 | **CloudPrem** | Self-hosted Datadog log indexer (reverse-connected to SaaS) | cloudprem |
 
 ## Prerequisites
 
-- **Docker Desktop** with Kubernetes enabled (kubeadm, NOT kind)
-- [kubectl](https://kubernetes.io/docs/tasks/tools/) - `brew install kubectl`
-- Datadog API Key (from your Datadog account)
-- (Optional) [Lens](https://k8slens.dev/) - K8s GUI - `brew install --cask lens`
+- **Docker Desktop** with Kubernetes enabled (kubeadm)
+- **kubectl** - `brew install kubectl`
+- **helm** - `brew install helm`
+- Datadog API Key
 
 ### Enable Docker Desktop Kubernetes
 
-1. Open Docker Desktop
-2. Go to **Settings → Kubernetes**
-3. Check **"Enable Kubernetes"**
-4. Select **kubeadm** (NOT kind)
-5. Click **Apply & Restart**
-
-> ⚠️ **Why Docker Desktop K8s?** Kind and Minikube (docker driver) have Kubelet access issues that prevent the DD Agent from discovering containers for log collection. Docker Desktop's kubeadm-based K8s has proper Kubelet access.
+1. Open Docker Desktop → **Settings → Kubernetes**
+2. Check **"Enable Kubernetes"** (select **kubeadm**)
+3. Click **Apply & Restart**
 
 ## Quick Start
 
-### 1. Create `.env` file with your Datadog credentials
+### 1. Create `.env` file
 
 ```bash
 cat > .env << 'EOF'
@@ -64,90 +64,78 @@ DD_SITE=datadoghq.com
 EOF
 ```
 
-### 2. Switch to Docker Desktop context
+### 2. Deploy everything
 
 ```bash
-kubectl config use-context docker-desktop
-kubectl get nodes  # Should show "docker-desktop" node
+./scripts/setup.sh
 ```
 
-### 3. Deploy the stack
+### 3. Generate traffic
 
 ```bash
-source .env
-
-# Create namespaces
-kubectl apply -f k8s/namespace.yaml
-kubectl create namespace cloudprem
-
-# Create secrets and configmaps
-kubectl create secret generic datadog-secrets --from-literal=api-key=$DD_API_KEY -n otel-demo
-kubectl create secret generic datadog-secrets --from-literal=api-key=$DD_API_KEY -n cloudprem
-kubectl create configmap datadog-config --from-literal=site=$DD_SITE -n otel-demo
-kubectl create configmap datadog-config --from-literal=site=$DD_SITE -n cloudprem
-
-# Build and deploy
-docker build -t sample-app:latest ./app
-kubectl apply -f k8s/cloudprem.yaml
-kubectl apply -f k8s/otel-collector.yaml
-kubectl apply -f k8s/datadog-agent.yaml
-kubectl apply -f k8s/sample-app.yaml
+./scripts/generate-traffic.sh
 ```
 
-### 4. Generate traffic
-
-```bash
-# Port forward to sample app
-kubectl port-forward svc/sample-app -n otel-demo 8080:80 &
-
-# Generate some requests
-curl http://localhost:8080/
-curl http://localhost:8080/api/users
-curl http://localhost:8080/api/orders
-curl http://localhost:8080/error        # Generate an error
-curl http://localhost:8080/api/slow     # Slow request
-
-# Stop port-forward
-pkill -f "port-forward"
-```
-
-### 5. View in Datadog
+### 4. View in Datadog
 
 | Signal | Where to Find It |
 |--------|------------------|
-| **Traces** | [APM → Traces](https://app.datadoghq.com/apm/traces) - search `service:sample-app` |
-| **Metrics** | [Metrics Explorer](https://app.datadoghq.com/metric/explorer) |
-| **Logs** | [Logs](https://app.datadoghq.com/logs) - select CloudPrem index, search `service:sample-app` |
+| **Traces** | [APM → Traces](https://app.datadoghq.com/apm/traces) - `service:sample-app` |
+| **Logs** | [Logs](https://app.datadoghq.com/logs) - select CloudPrem index |
 
 ## Project Structure
 
 ```
 .
-├── README.md
-├── .env                          # Datadog credentials (git-ignored)
-├── app/                          # Sample Python application
+├── .env                              # Datadog credentials (git-ignored)
+├── app/
 │   ├── Dockerfile
-│   ├── requirements.txt
-│   └── main.py
-├── k8s/                          # Kubernetes manifests
+│   ├── main.py                       # Flask app with OTEL instrumentation
+│   └── requirements.txt
+├── k8s/
 │   ├── namespace.yaml
-│   ├── otel-collector.yaml       # OTEL Collector (traces/metrics → DD SaaS)
-│   ├── datadog-operator-agent.yaml  # DD Agent via Operator (logs → CloudPrem)
-│   ├── cloudprem.yaml            # Self-hosted log indexer
+│   ├── otel-collector.yaml           # OTLP receiver, DD SaaS exporter
+│   ├── datadog-operator-agent.yaml   # DD Agent CRD (Operator)
+│   ├── cloudprem.yaml                # Self-hosted log indexer
 │   └── sample-app.yaml
-└── scripts/                      # Automation scripts
-    ├── setup.sh                  # Full stack deployment
-    ├── teardown.sh
-    └── generate-traffic.sh
+└── scripts/
+    ├── setup.sh                      # Full deployment
+    ├── teardown.sh                   # Cleanup
+    └── generate-traffic.sh           # Load generator
 ```
 
 ## Data Flow
 
-| Signal | Source | Path | Destination |
-|--------|--------|------|-------------|
-| **Traces** | Sample App | App → OTEL Collector → Datadog API | Datadog SaaS APM |
-| **Metrics** | Sample App | App → OTEL Collector → Datadog API | Datadog SaaS Metrics |
-| **Logs** | Container stdout | Container → DD Agent → CloudPrem → Datadog | CloudPrem Index |
+| Signal | Path |
+|--------|------|
+| **Traces** | App → OTEL Collector → Datadog SaaS APM |
+| **Metrics** | App → OTEL Collector → Datadog SaaS Metrics |
+| **Logs (OTLP)** | App → OTEL Collector → DD Agent OTLP → CloudPrem |
+| **Logs (stdout)** | Container → DD Agent → CloudPrem |
+
+## Key Configuration
+
+### DD Agent OTLP Logs (datadog-operator-agent.yaml)
+
+```yaml
+spec:
+  global:
+    env:
+      - name: DD_OTLP_CONFIG_LOGS_ENABLED
+        value: "true"
+      - name: DD_LOGS_CONFIG_LOGS_DD_URL
+        value: http://cloudprem-indexer.cloudprem.svc.cluster.local:7280
+  features:
+    otlp:
+      receiver:
+        protocols:
+          grpc:
+            enabled: true
+            endpoint: 0.0.0.0:4317
+    logCollection:
+      enabled: true
+      containerCollectAll: true
+```
 
 ## Troubleshooting
 
@@ -157,73 +145,29 @@ kubectl get pods -n otel-demo
 kubectl get pods -n cloudprem
 ```
 
-### Check DD Agent is collecting logs
+### Check DD Agent logs status
 ```bash
-kubectl exec -n otel-demo $(kubectl get pods -n otel-demo -l app=datadog-agent -o jsonpath='{.items[0].metadata.name}') -- agent status | grep -A 20 "Logs Agent"
+kubectl exec -n otel-demo $(kubectl get pods -n otel-demo -l app.kubernetes.io/component=agent -o jsonpath='{.items[0].metadata.name}') -c agent -- agent status | grep -A 15 "Logs Agent"
 ```
 
-Expected output should show `LogsProcessed: <number>` increasing.
-
-### Check DD Agent sees sample-app
+### Check OTLP receiver status
 ```bash
-kubectl exec -n otel-demo $(kubectl get pods -n otel-demo -l app=datadog-agent -o jsonpath='{.items[0].metadata.name}') -- agent status | grep -A 10 "sample-app"
+kubectl exec -n otel-demo $(kubectl get pods -n otel-demo -l app.kubernetes.io/component=agent -o jsonpath='{.items[0].metadata.name}') -c agent -- agent status | grep -A 5 "OTLP"
 ```
 
-### Check CloudPrem is running
+### View OTEL Collector logs
 ```bash
-kubectl logs -l app=cloudprem-indexer -n cloudprem --tail=20
-```
-
-### Check OTEL Collector logs
-```bash
-kubectl logs -l app=otel-collector -n otel-demo --tail=20
-```
-
-### Check sample app logs
-```bash
-kubectl logs -l app=sample-app -n otel-demo --tail=20
+kubectl logs -l app=otel-collector -n otel-demo --tail=30
 ```
 
 ## Cleanup
 
 ```bash
-kubectl delete namespace otel-demo
-kubectl delete namespace cloudprem
-kubectl delete clusterrole datadog-agent otel-collector
-kubectl delete clusterrolebinding datadog-agent otel-collector
-```
-
-## Key Configuration Details
-
-### DD Agent Volume Mounts (Docker Desktop)
-
-The DD Agent needs access to Docker's socket and container logs:
-
-```yaml
-volumeMounts:
-  - name: dockersocket
-    mountPath: /var/run/docker.sock
-  - name: podlogs
-    mountPath: /var/log/pods
-  - name: dockercontainerlogs
-    mountPath: /var/lib/docker/containers
-```
-
-### DD Agent → CloudPrem Configuration
-
-```yaml
-env:
-  - name: DD_LOGS_ENABLED
-    value: "true"
-  - name: DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL
-    value: "true"
-  - name: DD_LOGS_CONFIG_LOGS_DD_URL
-    value: "http://cloudprem-indexer.cloudprem.svc.cluster.local:7280"
+./scripts/teardown.sh
 ```
 
 ## References
 
-- [Datadog CloudPrem Docs](https://docs.datadoghq.com/cloudprem/)
-- [Datadog Agent + CloudPrem](https://docs.datadoghq.com/cloudprem/ingest_logs/datadog_agent/)
-- [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/)
-- [Docker Desktop Kubernetes](https://docs.docker.com/desktop/kubernetes/)
+- [Datadog OTLP Ingest](https://docs.datadoghq.com/opentelemetry/setup/otlp_ingest_in_the_agent/)
+- [Datadog CloudPrem](https://docs.datadoghq.com/cloudprem/)
+- [Datadog Operator](https://docs.datadoghq.com/containers/kubernetes/installation/?tab=operator)
