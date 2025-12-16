@@ -14,6 +14,9 @@ spec:
       apiSecret:
         secretName: datadog-secrets
         keyName: api-key
+    # Kubelet config for Docker Desktop
+    kubelet:
+      tlsVerify: false
     env:
       # CloudPrem endpoint for logs
       - name: DD_LOGS_CONFIG_LOGS_DD_URL
