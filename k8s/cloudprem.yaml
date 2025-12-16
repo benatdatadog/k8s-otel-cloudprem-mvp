@@ -1,0 +1,117 @@
+---
+# Datadog CloudPrem - Self-hosted Log Indexing
+# Based on: https://docs.datadoghq.com/cloudprem/
+
+# Namespace for CloudPrem
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudprem
+  labels:
+    app.kubernetes.io/name: cloudprem
+
+---
+# PersistentVolumeClaim for CloudPrem data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cloudprem-data
+  namespace: cloudprem
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# Official Datadog CloudPrem Deployment
+# Based on: https://docs.datadoghq.com/cloudprem/install/docker/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudprem-indexer
+  namespace: cloudprem
+  labels:
+    app: cloudprem-indexer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudprem-indexer
+  template:
+    metadata:
+      labels:
+        app: cloudprem-indexer
+    spec:
+      containers:
+        - name: cloudprem
+          # Official Datadog CloudPrem image
+          image: datadog/cloudprem:edge
+          args:
+            - run
+          ports:
+            - containerPort: 7280  # Log ingest API
+              name: api
+          env:
+            # Datadog site configuration
+            - name: DD_SITE
+              valueFrom:
+                configMapKeyRef:
+                  name: datadog-config
+                  key: site
+                  optional: true
+            - name: DD_SITE
+              value: "datadoghq.com"
+            # Datadog API key (required for CloudPrem)
+            - name: DD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: datadog-secrets
+                  key: api-key
+          volumeMounts:
+            - name: data
+              mountPath: /quickwit/qwdata
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /api/v1/version
+              port: 7280
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/v1/version
+              port: 7280
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cloudprem-data
+
+---
+# Service for CloudPrem
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudprem-indexer
+  namespace: cloudprem
+  labels:
+    app: cloudprem-indexer
+spec:
+  selector:
+    app: cloudprem-indexer
+  ports:
+    - name: api
+      port: 7280
+      targetPort: 7280
+      protocol: TCP
+  type: ClusterIP
+

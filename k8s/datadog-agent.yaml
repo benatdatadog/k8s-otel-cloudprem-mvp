@@ -1,0 +1,264 @@
+---
+# ConfigMap for Datadog Agent configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datadog-agent-config
+  namespace: otel-demo
+  labels:
+    app: datadog-agent
+data:
+  # Enable OTLP ingestion
+  DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT: "0.0.0.0:4317"
+  DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT: "0.0.0.0:4318"
+  # Logs configuration
+  DD_LOGS_ENABLED: "true"
+  DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+  # APM configuration
+  DD_APM_ENABLED: "true"
+  DD_APM_NON_LOCAL_TRAFFIC: "true"
+
+---
+# ServiceAccount for Datadog Agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: datadog-agent
+  namespace: otel-demo
+
+---
+# ClusterRole for Datadog Agent
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: datadog-agent
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - namespaces
+      - endpoints
+      - pods
+      - services
+      - events
+      - configmaps
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources:
+      - nodes/metrics
+      - nodes/spec
+      - nodes/proxy
+      - nodes/stats
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - daemonsets
+      - statefulsets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs:
+      - "/metrics"
+      - "/healthz"
+    verbs: ["get"]
+
+---
+# ClusterRoleBinding for Datadog Agent
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: datadog-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: datadog-agent
+subjects:
+  - kind: ServiceAccount
+    name: datadog-agent
+    namespace: otel-demo
+
+---
+# DaemonSet for Datadog Agent
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: datadog-agent
+  namespace: otel-demo
+  labels:
+    app: datadog-agent
+spec:
+  selector:
+    matchLabels:
+      app: datadog-agent
+  template:
+    metadata:
+      labels:
+        app: datadog-agent
+    spec:
+      serviceAccountName: datadog-agent
+      containers:
+        - name: datadog-agent
+          image: gcr.io/datadoghq/agent:7
+          ports:
+            - containerPort: 8125  # DogStatsD
+              name: dogstatsd
+              protocol: UDP
+            - containerPort: 8126  # APM
+              name: apm
+              protocol: TCP
+            - containerPort: 4317  # OTLP gRPC
+              name: otlp-grpc
+              protocol: TCP
+            - containerPort: 4318  # OTLP HTTP
+              name: otlp-http
+              protocol: TCP
+          env:
+            # API Key from secret
+            - name: DD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: datadog-secrets
+                  key: api-key
+            # Site configuration
+            - name: DD_SITE
+              valueFrom:
+                configMapKeyRef:
+                  name: datadog-config
+                  key: site
+            # Kubernetes integration
+            - name: DD_KUBERNETES_KUBELET_NODENAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: KUBERNETES
+              value: "true"
+            # OTLP Receiver - Enable receiving OTLP data
+            - name: DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT
+              value: "0.0.0.0:4317"
+            - name: DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT
+              value: "0.0.0.0:4318"
+            # Logs - Send to CloudPrem instead of Datadog SaaS
+            - name: DD_LOGS_ENABLED
+              value: "true"
+            - name: DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL
+              value: "true"
+            # CloudPrem indexer endpoint (self-hosted log storage)
+            - name: DD_LOGS_CONFIG_LOGS_DD_URL
+              value: "http://cloudprem-indexer.cloudprem.svc.cluster.local:7280"
+            # Ensure host tags are added to every log (required for CloudPrem)
+            - name: DD_LOGS_CONFIG_EXPECTED_TAGS_DURATION
+              value: "100000"
+            # APM
+            - name: DD_APM_ENABLED
+              value: "true"
+            - name: DD_APM_NON_LOCAL_TRAFFIC
+              value: "true"
+            # Cluster name for better identification
+            - name: DD_CLUSTER_NAME
+              value: "otel-demo"
+            # Hostname (required for Kind clusters)
+            - name: DD_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            # Kubelet configuration for Kind
+            - name: DD_KUBELET_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            # Disable TLS verify for Kind's kubelet
+            - name: DD_KUBELET_TLS_VERIFY
+              value: "false"
+            # Use HTTPS for kubelet
+            - name: DD_KUBERNETES_HTTPS_KUBELET_PORT
+              value: "10250"
+            # Process monitoring (optional)
+            - name: DD_PROCESS_AGENT_ENABLED
+              value: "false"
+            # Container runtime for Docker Desktop
+            - name: DD_CRI_SOCKET_PATH
+              value: "/var/run/docker.sock"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            # Docker socket (Docker Desktop uses Docker runtime)
+            - name: dockersocket
+              mountPath: /var/run/docker.sock
+              readOnly: true
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: cgroup
+              mountPath: /host/sys/fs/cgroup
+              readOnly: true
+            - name: pointerdir
+              mountPath: /opt/datadog-agent/run
+            # Pod logs directory (for container log collection)
+            - name: podlogs
+              mountPath: /var/log/pods
+              readOnly: true
+            # Docker container logs (symlink targets)
+            - name: dockercontainerlogs
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+      volumes:
+        - name: dockersocket
+          hostPath:
+            path: /var/run/docker.sock
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+        - name: pointerdir
+          emptyDir: {}
+        - name: podlogs
+          hostPath:
+            path: /var/log/pods
+        - name: dockercontainerlogs
+          hostPath:
+            path: /var/lib/docker/containers
+
+---
+# Service for Datadog Agent (for OTLP ingestion)
+apiVersion: v1
+kind: Service
+metadata:
+  name: datadog-agent
+  namespace: otel-demo
+  labels:
+    app: datadog-agent
+spec:
+  selector:
+    app: datadog-agent
+  ports:
+    - name: dogstatsd
+      port: 8125
+      targetPort: 8125
+      protocol: UDP
+    - name: apm
+      port: 8126
+      targetPort: 8126
+      protocol: TCP
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+  # Use ClusterIP so OTEL Collector can reach it
+  type: ClusterIP
+

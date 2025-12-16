@@ -1,0 +1,227 @@
+---
+# ConfigMap for OTEL Collector configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: otel-demo
+  labels:
+    app: otel-collector
+data:
+  collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        timeout: 10s
+        send_batch_size: 1000
+      
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+        spike_limit_mib: 128
+
+      # Add resource attributes for better context in Datadog
+      resource:
+        attributes:
+          - key: deployment.environment
+            value: demo
+            action: upsert
+          - key: host.name
+            from_attribute: k8s.node.name
+            action: insert
+
+    exporters:
+      # Datadog exporter for traces (direct to Datadog SaaS)
+      datadog:
+        api:
+          key: ${env:DD_API_KEY}
+          site: ${env:DD_SITE}
+        traces:
+          span_name_as_resource_name: true
+        hostname: "otel-demo-cluster"
+
+      # OTLP exporter to Datadog Agent (for logs)
+      otlp/datadog-agent:
+        endpoint: "datadog-agent:4317"
+        tls:
+          insecure: true
+
+      # Debug exporter for troubleshooting (logs to stdout)
+      debug:
+        verbosity: basic
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      zpages:
+        endpoint: 0.0.0.0:55679
+
+    service:
+      extensions: [health_check, zpages]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch, resource]
+          exporters: [datadog, debug]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [datadog]
+        # Logs are now collected by DD Agent directly from container stdout
+        # No need for OTEL logs pipeline - DD Agent handles it natively
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]  # Keep debug for visibility, DD Agent collects from containers
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          address: 0.0.0.0:8888
+
+---
+# ServiceAccount for OTEL Collector
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: otel-demo
+
+---
+# ClusterRole for OTEL Collector (needed for k8s attributes)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "deployments"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: otel-demo
+
+---
+# Deployment for OTEL Collector
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: otel-demo
+  labels:
+    app: otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      serviceAccountName: otel-collector
+      containers:
+        - name: otel-collector
+          # Using the contrib image which includes the Datadog exporter
+          image: otel/opentelemetry-collector-contrib:0.114.0
+          args:
+            - --config=/conf/collector-config.yaml
+          ports:
+            - containerPort: 4317  # OTLP gRPC
+              name: otlp-grpc
+            - containerPort: 4318  # OTLP HTTP
+              name: otlp-http
+            - containerPort: 8888  # Prometheus metrics
+              name: metrics
+            - containerPort: 13133 # Health check
+              name: health
+          env:
+            - name: DD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: datadog-secrets
+                  key: api-key
+            - name: DD_SITE
+              valueFrom:
+                configMapKeyRef:
+                  name: datadog-config
+                  key: site
+                  optional: true
+            - name: DD_SITE
+              value: "datadoghq.com"  # Default, override via configmap
+          volumeMounts:
+            - name: config
+              mountPath: /conf
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+
+---
+# Service for OTEL Collector
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: otel-demo
+  labels:
+    app: otel-collector
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+    - name: metrics
+      port: 8888
+      targetPort: 8888
+      protocol: TCP
+

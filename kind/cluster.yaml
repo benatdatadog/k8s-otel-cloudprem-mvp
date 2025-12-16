@@ -1,0 +1,16 @@
+# Kind cluster configuration for OTEL demo
+# Minimal single-node cluster for proof of concept
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: otel-demo
+nodes:
+  - role: control-plane
+    # Expose ports for easy access
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 30088
+        hostPort: 8088
+        protocol: TCP
+
