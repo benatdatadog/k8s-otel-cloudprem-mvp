@@ -44,7 +44,13 @@ if ! command -v kubectl &> /dev/null; then
     exit 1
 fi
 
-echo -e "${GREEN}✓ Docker and kubectl installed${NC}"
+if ! command -v helm &> /dev/null; then
+    echo -e "${RED}Error: helm is not installed${NC}"
+    echo "Install with: brew install helm"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Docker, kubectl, and helm installed${NC}"
 
 # Check for Docker Desktop Kubernetes
 echo -e "${YELLOW}Checking for Docker Desktop Kubernetes...${NC}"
@@ -72,9 +78,6 @@ if [ -z "$DD_API_KEY" ]; then
     echo "Create a .env file with your Datadog API key:"
     echo "  echo 'DD_API_KEY=your-api-key-here' > .env"
     echo "  echo 'DD_SITE=datadoghq.com' >> .env"
-    echo ""
-    echo "You can find your API key at:"
-    echo "  https://app.datadoghq.com/organization-settings/api-keys"
     exit 1
 fi
 
@@ -130,9 +133,20 @@ kubectl apply -f k8s/otel-collector.yaml
 echo -e "${GREEN}✓ OTEL Collector deployed${NC}"
 echo ""
 
-# Deploy Datadog Agent
-echo -e "${YELLOW}Deploying Datadog Agent...${NC}"
-kubectl apply -f k8s/datadog-agent.yaml
+# Install Datadog Operator
+echo -e "${YELLOW}Installing Datadog Operator...${NC}"
+helm repo add datadog https://helm.datadoghq.com 2>/dev/null || true
+helm repo update
+helm upgrade --install datadog-operator datadog/datadog-operator \
+    -n otel-demo \
+    --set watchNamespaces="{otel-demo}" \
+    --wait
+echo -e "${GREEN}✓ Datadog Operator installed${NC}"
+echo ""
+
+# Deploy Datadog Agent via Operator
+echo -e "${YELLOW}Deploying Datadog Agent (via Operator)...${NC}"
+kubectl apply -f k8s/datadog-operator-agent.yaml
 echo -e "${GREEN}✓ Datadog Agent deployed${NC}"
 echo ""
 
@@ -146,7 +160,6 @@ echo ""
 echo -e "${YELLOW}Waiting for pods to be ready...${NC}"
 kubectl rollout status deployment/cloudprem-indexer -n cloudprem --timeout=180s
 kubectl rollout status deployment/otel-collector -n otel-demo --timeout=120s
-kubectl rollout status daemonset/datadog-agent -n otel-demo --timeout=120s
 kubectl rollout status deployment/sample-app -n otel-demo --timeout=120s
 echo -e "${GREEN}✓ All pods ready${NC}"
 echo ""
@@ -167,21 +180,11 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  Access Instructions${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
-echo -e "${YELLOW}Port-forward to sample app:${NC}"
-echo "  kubectl port-forward svc/sample-app -n otel-demo 8080:80"
-echo ""
-echo -e "${YELLOW}Try these endpoints to generate traces & logs:${NC}"
-echo "  curl http://localhost:8080/"
-echo "  curl http://localhost:8080/api/users"
-echo "  curl http://localhost:8080/api/orders"
-echo "  curl http://localhost:8080/api/slow"
-echo "  curl http://localhost:8080/error"
+echo -e "${YELLOW}Generate traffic:${NC}"
+echo "  ./scripts/generate-traffic.sh"
 echo ""
 echo -e "${YELLOW}View in Datadog:${NC}"
-echo "  Traces:  https://app.${DD_SITE}/apm/traces"
+echo "  Traces:  https://app.${DD_SITE}/apm/traces?query=service:sample-app"
 echo "  Logs:    https://app.${DD_SITE}/logs (select CloudPrem index)"
-echo ""
-echo -e "${YELLOW}Check DD Agent log collection:${NC}"
-echo "  kubectl exec -n otel-demo \$(kubectl get pods -n otel-demo -l app=datadog-agent -o jsonpath='{.items[0].metadata.name}') -- agent status | grep -A 20 'Logs Agent'"
 echo ""
 echo -e "${GREEN}Setup complete! 🎉${NC}"

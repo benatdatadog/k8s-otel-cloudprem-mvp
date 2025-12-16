@@ -124,21 +124,19 @@ pkill -f "port-forward"
 ```
 .
 ├── README.md
-├── .env                      # Datadog credentials (git-ignored)
-├── app/                      # Sample Python application
+├── .env                          # Datadog credentials (git-ignored)
+├── app/                          # Sample Python application
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── main.py
-├── k8s/                      # Kubernetes manifests
+├── k8s/                          # Kubernetes manifests
 │   ├── namespace.yaml
-│   ├── otel-collector.yaml   # OTEL Collector (traces/metrics → DD SaaS)
-│   ├── datadog-agent.yaml    # DD Agent (logs → CloudPrem)
-│   ├── cloudprem.yaml        # Self-hosted log indexer
+│   ├── otel-collector.yaml       # OTEL Collector (traces/metrics → DD SaaS)
+│   ├── datadog-operator-agent.yaml  # DD Agent via Operator (logs → CloudPrem)
+│   ├── cloudprem.yaml            # Self-hosted log indexer
 │   └── sample-app.yaml
-├── kind/                     # Kind cluster config (deprecated - use Docker Desktop)
-│   └── cluster.yaml
-└── scripts/                  # Automation scripts
-    ├── setup.sh
+└── scripts/                      # Automation scripts
+    ├── setup.sh                  # Full stack deployment
     ├── teardown.sh
     └── generate-traffic.sh
 ```
