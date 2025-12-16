@@ -49,9 +49,8 @@ data:
 
       # OTLP exporter to Datadog Agent (for logs → CloudPrem)
       # DD Agent receives OTLP logs and forwards to CloudPrem indexer
-      # Port 4417 is the Datadog standard OTLP gRPC port
       otlp/datadog-agent:
-        endpoint: "datadog-agent:4417"
+        endpoint: "datadog-agent:4317"
         tls:
           insecure: true
 
@@ -76,12 +75,11 @@ data:
           receivers: [otlp]
           processors: [memory_limiter, batch]
           exporters: [datadog]
-        # Logs: DD Agent collects from container stdout → CloudPrem
-        # (DD Agent OTLP receiver doesn't support logs, only traces/metrics)
+        # Logs: App → OTEL Collector → DD Agent (OTLP) → CloudPrem
         logs:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [debug]
+          exporters: [otlp/datadog-agent, debug]
       telemetry:
         logs:
           level: info
