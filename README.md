@@ -1,8 +1,8 @@
 # K8s OTEL to Datadog CloudPrem - MVP (OP Worker Branch)
 
-Proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes with **Observability Pipelines Worker (bootstrap config)**:
+A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes with **Observability Pipelines Worker**:
 - **Traces & Metrics** → Datadog SaaS (via OTEL Collector)
-- **Logs** → OP Worker → Datadog CloudPrem
+- **Logs** → Datadog CloudPrem (via OP Worker)
 
 ## Architecture
 
@@ -30,33 +30,85 @@ Proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes with 
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## What’s in this branch
-- Local bootstrap config for OP Worker (no Datadog UI pipeline required)
-- OTEL Collector exports logs to OP Worker (gRPC :4317)
-- OP Worker forwards to CloudPrem ingest
+## Prerequisites
 
-## Quick Start
+- Docker Desktop with Kubernetes enabled (kubeadm)
+- kubectl, helm
+- Datadog API Key
 
-### 1. Create `.env` file
+## Setup
+
+### 1. Create Pipeline in Datadog UI
+
+1. Go to [Observability Pipelines](https://app.datadoghq.com/observability-pipelines)
+2. Create new pipeline with:
+   - **Source**: OpenTelemetry (OTLP) - endpoint `0.0.0.0:4317`
+   - **Destination**: Datadog Logs - endpoint `http://cloudprem-indexer.cloudprem.svc.cluster.local:7280`
+3. Save and **Deploy** the pipeline
+4. Copy the **Pipeline ID**
+
+### 2. Deploy CloudPrem and OTEL Collector
 
 ```bash
-cat > .env << 'EOF'
-DD_API_KEY=your-datadog-api-key-here
-DD_SITE=datadoghq.com
-EOF
+# Create .env with your API key
+echo 'DD_API_KEY=your-api-key' > .env
+source .env
+
+# Deploy CloudPrem
+kubectl apply -f k8s/namespace.yaml
+kubectl create namespace cloudprem
+kubectl create secret generic datadog-secrets --from-literal=api-key=$DD_API_KEY -n otel-demo
+kubectl create secret generic datadog-secrets --from-literal=api-key=$DD_API_KEY -n cloudprem
+kubectl apply -f k8s/cloudprem.yaml
+
+# Build and deploy sample app
+docker build -t sample-app:latest ./app
+kubectl apply -f k8s/sample-app.yaml
+
+# Deploy OTEL Collector
+kubectl apply -f k8s/otel-collector.yaml
 ```
 
-### 2. Deploy everything
+### 3. Install OP Worker via Helm
+
+Use the command from the Datadog UI (with zsh-safe quoting):
 
 ```bash
-./scripts/setup.sh
+helm upgrade --install opw \
+  --namespace otel-demo \
+  --set datadog.apiKey=$DD_API_KEY \
+  --set datadog.pipelineId=YOUR_PIPELINE_ID \
+  --set datadog.site=datadoghq.com \
+  --set-string 'env[0].name=DD_OP_SOURCE_OTEL_HTTP_ADDRESS' \
+  --set-string 'env[0].value=0.0.0.0:4318' \
+  --set-string 'env[1].name=DD_OP_SOURCE_OTEL_GRPC_ADDRESS' \
+  --set-string 'env[1].value=0.0.0.0:4317' \
+  --set-string 'env[2].name=DD_OP_DESTINATION_CLOUDPREM_ENDPOINT_URL' \
+  --set-string 'env[2].value=http://cloudprem-indexer.cloudprem.svc.cluster.local:7280' \
+  --set 'service.ports[0].name=otel-http' \
+  --set 'service.ports[0].protocol=TCP' \
+  --set 'service.ports[0].port=4318' \
+  --set 'service.ports[0].targetPort=4318' \
+  --set 'service.ports[1].name=otel-grpc' \
+  --set 'service.ports[1].protocol=TCP' \
+  --set 'service.ports[1].port=4317' \
+  --set 'service.ports[1].targetPort=4317' \
+  datadog/observability-pipelines-worker
 ```
 
-### 3. Generate traffic
+### 4. Deploy the pipeline in Datadog UI
+
+After Helm install, go back to the Datadog UI and click **Deploy** on your pipeline.
+
+### 5. Generate traffic
 
 ```bash
 ./scripts/generate-traffic.sh
 ```
+
+### 6. View logs in Datadog
+
+Go to [Logs](https://app.datadoghq.com/logs), select CloudPrem index, search `service:sample-app`.
 
 ## Data Flow
 
@@ -68,36 +120,23 @@ EOF
 
 ## OP Worker Benefits
 
-- **Transform logs** before indexing (parse JSON, extract fields)
-- **Filter/sample** high-volume logs
-- **Route** different logs to different destinations
-- **Enrich** with additional metadata
-- **UI-managed configuration** via Datadog platform
+- Transform logs before indexing
+- Filter/sample high-volume logs
+- Route to multiple destinations
+- UI-managed configuration
 
 ## Troubleshooting
 
-### Check OP Worker status
 ```bash
-kubectl get pods -n otel-demo -l app=op-worker
-kubectl logs -n otel-demo -l app=op-worker --tail=50
-```
+# Check OP Worker status
+kubectl get pods -n otel-demo -l app.kubernetes.io/name=observability-pipelines-worker
+kubectl logs -n otel-demo -l app.kubernetes.io/name=observability-pipelines-worker --tail=60
 
-### Common Issues
-
-**"Missing configuration option for identifier"**
-- The pipeline in Datadog UI must use placeholder variables that match your env vars
-- Check that `SOURCE_OTEL_GRPC_ADDRESS` and `DESTINATION_CLOUDPREM_ENDPOINT_URL` are used in the pipeline config
-
-## Files
-
-```
-k8s/
-├── op-worker.yaml            # OP Worker (bootstrap config)
-├── otel-collector.yaml       # Routes logs to OP Worker
-├── cloudprem.yaml            # Self-hosted log indexer
-└── ...
+# Check OTEL Collector
+kubectl logs -l app=otel-collector -n otel-demo --tail=30
 ```
 
 ## References
 
 - [Datadog Observability Pipelines](https://docs.datadoghq.com/observability_pipelines/)
+- [OP Worker Helm Chart](https://github.com/DataDog/helm-charts/tree/main/charts/observability-pipelines-worker)
