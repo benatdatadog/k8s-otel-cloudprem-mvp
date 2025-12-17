@@ -133,6 +133,18 @@ kubectl apply -f k8s/otel-collector.yaml
 echo -e "${GREEN}✓ OTEL Collector deployed${NC}"
 echo ""
 
+# Install OP Worker (Observability Pipelines)
+echo -e "${YELLOW}Installing OP Worker...${NC}"
+helm repo add datadog https://helm.datadoghq.com 2>/dev/null || true
+helm repo update
+helm upgrade --install op-worker \
+    --namespace otel-demo \
+    -f k8s/op-worker-values.yaml \
+    --set datadog.apiKey="$DD_API_KEY" \
+    datadog/observability-pipelines-worker
+echo -e "${GREEN}✓ OP Worker installed${NC}"
+echo ""
+
 # Install Datadog Operator
 echo -e "${YELLOW}Installing Datadog Operator...${NC}"
 helm repo add datadog https://helm.datadoghq.com 2>/dev/null || true

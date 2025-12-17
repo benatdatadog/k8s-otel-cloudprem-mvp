@@ -47,10 +47,10 @@ data:
           span_name_as_resource_name: true
         hostname: "otel-demo-cluster"
 
-      # OTLP exporter to Datadog Agent (for logs → CloudPrem)
-      # DD Agent receives OTLP logs and forwards to CloudPrem indexer
-      otlp/datadog-agent:
-        endpoint: "datadog-agent:4317"
+      # OTLP exporter to OP Worker (for logs → CloudPrem)
+      # OP Worker receives OTLP logs and forwards to CloudPrem indexer
+      otlp/op-worker:
+        endpoint: "op-worker-observability-pipelines-worker:4317"
         tls:
           insecure: true
 
@@ -75,11 +75,11 @@ data:
           receivers: [otlp]
           processors: [memory_limiter, batch]
           exporters: [datadog]
-        # Logs: App → OTEL Collector → DD Agent (OTLP) → CloudPrem
+        # Logs: App → OTEL Collector → OP Worker → CloudPrem
         logs:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [otlp/datadog-agent, debug]
+          exporters: [otlp/op-worker, debug]
       telemetry:
         logs:
           level: info

@@ -1,8 +1,8 @@
-# K8s OTEL to Datadog CloudPrem - MVP
+# K8s OTEL to Datadog CloudPrem - MVP (OP Worker Branch)
 
-A minimal proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes with:
+A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes with **Observability Pipelines Worker**:
 - **Traces & Metrics** → Datadog SaaS (via OTEL Collector)
-- **Logs** → Datadog CloudPrem (self-hosted, via DD Agent)
+- **Logs** → Datadog CloudPrem (via OP Worker)
 
 ## Architecture
 
@@ -14,16 +14,15 @@ A minimal proof-of-concept demonstrating OpenTelemetry instrumentation on Kubern
 │  │  Sample App  │──OTLP──▶│  OTEL Collector  │──Traces/Metrics──▶ DD SaaS    │
 │  │  (Python)    │  :4317  │                  │                               │
 │  └──────────────┘         └────────┬─────────┘                               │
-│         │                          │                                          │
-│         │ stdout                   │ OTLP Logs                                │
-│         ▼                          ▼                                          │
-│  ┌──────────────────────────────────────────┐                                │
-│  │           Datadog Agent (Operator)        │                                │
-│  │  • Collects container logs (stdout)       │                                │
-│  │  • Receives OTLP logs on :4317            │                                │
-│  └────────────────────┬─────────────────────┘                                │
-│                       │                                                       │
-│                       ▼                                                       │
+│                                    │                                          │
+│                                    │ OTLP Logs                                │
+│                                    ▼                                          │
+│                           ┌──────────────────┐                               │
+│                           │    OP Worker     │  ← Transform / Filter / Route │
+│                           │  (Obs Pipelines) │                               │
+│                           └────────┬─────────┘                               │
+│                                    │                                          │
+│                                    ▼                                          │
 │  ┌──────────────────┐         ┌──────────────────┐                           │
 │  │    CloudPrem     │◀───────▶│   Datadog SaaS   │                           │
 │  │    (Indexer)     │         │  (Log Explorer)  │                           │
@@ -31,27 +30,19 @@ A minimal proof-of-concept demonstrating OpenTelemetry instrumentation on Kubern
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Components
+## ⚠️ Prerequisites: Create Pipeline in Datadog UI
 
-| Component | Purpose | Namespace |
-|-----------|---------|-----------|
-| **Sample App** | Python Flask app with OTEL instrumentation | otel-demo |
-| **OTEL Collector** | Receives OTLP, exports traces/metrics to DD SaaS, logs to DD Agent | otel-demo |
-| **Datadog Agent** | Collects container + OTLP logs, sends to CloudPrem | otel-demo |
-| **CloudPrem** | Self-hosted Datadog log indexer (reverse-connected to SaaS) | cloudprem |
+**Before deploying**, you must create a pipeline in the Datadog UI:
 
-## Prerequisites
-
-- **Docker Desktop** with Kubernetes enabled (kubeadm)
-- **kubectl** - `brew install kubectl`
-- **helm** - `brew install helm`
-- Datadog API Key
-
-### Enable Docker Desktop Kubernetes
-
-1. Open Docker Desktop → **Settings → Kubernetes**
-2. Check **"Enable Kubernetes"** (select **kubeadm**)
-3. Click **Apply & Restart**
+1. Go to [Observability Pipelines](https://app.datadoghq.com/observability-pipelines)
+2. Click **New Pipeline**
+3. Select **OpenTelemetry (OTLP)** as Source
+4. Select **Datadog Logs** as Destination
+5. Configure placeholders to match `k8s/op-worker-values.yaml`:
+   - Source address: `${SOURCE_OTEL_GRPC_ADDRESS}`
+   - Destination endpoint: `${DESTINATION_CLOUDPREM_ENDPOINT_URL}`
+6. Save and copy the **Pipeline ID** and **Worker ID**
+7. Update `k8s/op-worker-values.yaml` with your IDs
 
 ## Quick Start
 
@@ -64,44 +55,20 @@ DD_SITE=datadoghq.com
 EOF
 ```
 
-### 2. Deploy everything
+### 2. Update OP Worker values
+
+Edit `k8s/op-worker-values.yaml` with your Pipeline ID and Worker ID from the Datadog UI.
+
+### 3. Deploy everything
 
 ```bash
 ./scripts/setup.sh
 ```
 
-### 3. Generate traffic
+### 4. Generate traffic
 
 ```bash
 ./scripts/generate-traffic.sh
-```
-
-### 4. View in Datadog
-
-| Signal | Where to Find It |
-|--------|------------------|
-| **Traces** | [APM → Traces](https://app.datadoghq.com/apm/traces) - `service:sample-app` |
-| **Logs** | [Logs](https://app.datadoghq.com/logs) - select CloudPrem index |
-
-## Project Structure
-
-```
-.
-├── .env                              # Datadog credentials (git-ignored)
-├── app/
-│   ├── Dockerfile
-│   ├── main.py                       # Flask app with OTEL instrumentation
-│   └── requirements.txt
-├── k8s/
-│   ├── namespace.yaml
-│   ├── otel-collector.yaml           # OTLP receiver, DD SaaS exporter
-│   ├── datadog-operator-agent.yaml   # DD Agent CRD (Operator)
-│   ├── cloudprem.yaml                # Self-hosted log indexer
-│   └── sample-app.yaml
-└── scripts/
-    ├── setup.sh                      # Full deployment
-    ├── teardown.sh                   # Cleanup
-    └── generate-traffic.sh           # Load generator
 ```
 
 ## Data Flow
@@ -110,64 +77,41 @@ EOF
 |--------|------|
 | **Traces** | App → OTEL Collector → Datadog SaaS APM |
 | **Metrics** | App → OTEL Collector → Datadog SaaS Metrics |
-| **Logs (OTLP)** | App → OTEL Collector → DD Agent OTLP → CloudPrem |
-| **Logs (stdout)** | Container → DD Agent → CloudPrem |
+| **Logs** | App → OTEL Collector → **OP Worker** → CloudPrem |
 
-## Key Configuration
+## OP Worker Benefits
 
-### DD Agent OTLP Logs (datadog-operator-agent.yaml)
-
-```yaml
-spec:
-  global:
-    env:
-      - name: DD_OTLP_CONFIG_LOGS_ENABLED
-        value: "true"
-      - name: DD_LOGS_CONFIG_LOGS_DD_URL
-        value: http://cloudprem-indexer.cloudprem.svc.cluster.local:7280
-  features:
-    otlp:
-      receiver:
-        protocols:
-          grpc:
-            enabled: true
-            endpoint: 0.0.0.0:4317
-    logCollection:
-      enabled: true
-      containerCollectAll: true
-```
+- **Transform logs** before indexing (parse JSON, extract fields)
+- **Filter/sample** high-volume logs
+- **Route** different logs to different destinations
+- **Enrich** with additional metadata
+- **UI-managed configuration** via Datadog platform
 
 ## Troubleshooting
 
-### Check pod status
+### Check OP Worker status
 ```bash
-kubectl get pods -n otel-demo
-kubectl get pods -n cloudprem
+kubectl get pods -n otel-demo -l app.kubernetes.io/name=observability-pipelines-worker
+kubectl logs -n otel-demo -l app.kubernetes.io/name=observability-pipelines-worker --tail=50
 ```
 
-### Check DD Agent logs status
-```bash
-kubectl exec -n otel-demo $(kubectl get pods -n otel-demo -l app.kubernetes.io/component=agent -o jsonpath='{.items[0].metadata.name}') -c agent -- agent status | grep -A 15 "Logs Agent"
+### Common Issues
+
+**"Missing configuration option for identifier"**
+- The pipeline in Datadog UI must use placeholder variables that match your env vars
+- Check that `SOURCE_OTEL_GRPC_ADDRESS` and `DESTINATION_CLOUDPREM_ENDPOINT_URL` are used in the pipeline config
+
+## Files
+
 ```
-
-### Check OTLP receiver status
-```bash
-kubectl exec -n otel-demo $(kubectl get pods -n otel-demo -l app.kubernetes.io/component=agent -o jsonpath='{.items[0].metadata.name}') -c agent -- agent status | grep -A 5 "OTLP"
-```
-
-### View OTEL Collector logs
-```bash
-kubectl logs -l app=otel-collector -n otel-demo --tail=30
-```
-
-## Cleanup
-
-```bash
-./scripts/teardown.sh
+k8s/
+├── op-worker-values.yaml     # Helm values for OP Worker
+├── otel-collector.yaml       # Routes logs to OP Worker
+├── cloudprem.yaml            # Self-hosted log indexer
+└── ...
 ```
 
 ## References
 
-- [Datadog OTLP Ingest](https://docs.datadoghq.com/opentelemetry/setup/otlp_ingest_in_the_agent/)
-- [Datadog CloudPrem](https://docs.datadoghq.com/cloudprem/)
-- [Datadog Operator](https://docs.datadoghq.com/containers/kubernetes/installation/?tab=operator)
+- [Datadog Observability Pipelines](https://docs.datadoghq.com/observability_pipelines/)
+- [OP Worker Helm Chart](https://github.com/DataDog/helm-charts/tree/main/charts/observability-pipelines-worker)
