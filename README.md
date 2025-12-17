@@ -1,8 +1,15 @@
-# K8s OTEL to Datadog CloudPrem - MVP (OP Worker Branch)
+# K8s OTEL to Datadog CloudPrem - MVP
 
 A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes with **Observability Pipelines Worker**:
 - **Traces & Metrics** → Datadog SaaS (via OTEL Collector)
 - **Logs** → Datadog CloudPrem (via OP Worker)
+
+## Features
+
+- **JSON Structured Logging** - All app logs output in JSON format for easy parsing
+- **Trace Correlation** - Logs include standard OTLP `trace_id`/`span_id` for APM correlation
+- **Vendor-Agnostic** - Uses standard OpenTelemetry format (no Datadog-specific fields)
+- **OP Worker Integration** - Logs routed through Observability Pipelines for transformation
 
 ## Architecture
 
@@ -118,12 +125,34 @@ Go to [Logs](https://app.datadoghq.com/logs), select CloudPrem index, search `se
 | **Metrics** | App → OTEL Collector → Datadog SaaS Metrics |
 | **Logs** | App → OTEL Collector → **OP Worker** → CloudPrem |
 
+## Log Format
+
+Logs are output in JSON with standard OTLP trace context:
+
+```json
+{
+  "timestamp": "2025-12-17T22:37:37.721915Z",
+  "level": "INFO",
+  "service": "sample-app",
+  "message": "Fetched users from database",
+  "trace_id": "b0bbce84cafe1528a9a018c9927813e5",
+  "span_id": "5e2917fa0c9e787f",
+  "endpoint": "/api/users",
+  "user_count": 3
+}
+```
+
+This enables:
+- **Trace ↔ Log correlation** in Datadog APM
+- **Structured querying** in Log Explorer
+- **Vendor-agnostic format** (standard OTLP, not Datadog-specific)
+
 ## OP Worker Benefits
 
 - Transform logs before indexing
 - Filter/sample high-volume logs
 - Route to multiple destinations
-- UI-managed configuration
+- UI-managed configuration (edit pipeline in Datadog UI, worker auto-reloads)
 
 ## Troubleshooting
 
