@@ -133,6 +133,12 @@ kubectl apply -f k8s/otel-collector.yaml
 echo -e "${GREEN}✓ OTEL Collector deployed${NC}"
 echo ""
 
+# Deploy OP Worker (Observability Pipelines)
+echo -e "${YELLOW}Deploying OP Worker...${NC}"
+kubectl apply -f k8s/op-worker.yaml
+echo -e "${GREEN}✓ OP Worker deployed${NC}"
+echo ""
+
 # Install OP Worker (Observability Pipelines)
 echo -e "${YELLOW}Installing OP Worker...${NC}"
 helm repo add datadog https://helm.datadoghq.com 2>/dev/null || true

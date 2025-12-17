@@ -1,8 +1,8 @@
 # K8s OTEL to Datadog CloudPrem - MVP (OP Worker Branch)
 
-A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes with **Observability Pipelines Worker**:
+Proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes with **Observability Pipelines Worker (bootstrap config)**:
 - **Traces & Metrics** → Datadog SaaS (via OTEL Collector)
-- **Logs** → Datadog CloudPrem (via OP Worker)
+- **Logs** → OP Worker → Datadog CloudPrem
 
 ## Architecture
 
@@ -30,19 +30,10 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## ⚠️ Prerequisites: Create Pipeline in Datadog UI
-
-**Before deploying**, you must create a pipeline in the Datadog UI:
-
-1. Go to [Observability Pipelines](https://app.datadoghq.com/observability-pipelines)
-2. Click **New Pipeline**
-3. Select **OpenTelemetry (OTLP)** as Source
-4. Select **Datadog Logs** as Destination
-5. Configure placeholders to match `k8s/op-worker-values.yaml`:
-   - Source address: `${SOURCE_OTEL_GRPC_ADDRESS}`
-   - Destination endpoint: `${DESTINATION_CLOUDPREM_ENDPOINT_URL}`
-6. Save and copy the **Pipeline ID** and **Worker ID**
-7. Update `k8s/op-worker-values.yaml` with your IDs
+## What’s in this branch
+- Local bootstrap config for OP Worker (no Datadog UI pipeline required)
+- OTEL Collector exports logs to OP Worker (gRPC :4317)
+- OP Worker forwards to CloudPrem ingest
 
 ## Quick Start
 
@@ -55,17 +46,13 @@ DD_SITE=datadoghq.com
 EOF
 ```
 
-### 2. Update OP Worker values
-
-Edit `k8s/op-worker-values.yaml` with your Pipeline ID and Worker ID from the Datadog UI.
-
-### 3. Deploy everything
+### 2. Deploy everything
 
 ```bash
 ./scripts/setup.sh
 ```
 
-### 4. Generate traffic
+### 3. Generate traffic
 
 ```bash
 ./scripts/generate-traffic.sh
@@ -91,8 +78,8 @@ Edit `k8s/op-worker-values.yaml` with your Pipeline ID and Worker ID from the Da
 
 ### Check OP Worker status
 ```bash
-kubectl get pods -n otel-demo -l app.kubernetes.io/name=observability-pipelines-worker
-kubectl logs -n otel-demo -l app.kubernetes.io/name=observability-pipelines-worker --tail=50
+kubectl get pods -n otel-demo -l app=op-worker
+kubectl logs -n otel-demo -l app=op-worker --tail=50
 ```
 
 ### Common Issues
@@ -105,7 +92,7 @@ kubectl logs -n otel-demo -l app.kubernetes.io/name=observability-pipelines-work
 
 ```
 k8s/
-├── op-worker-values.yaml     # Helm values for OP Worker
+├── op-worker.yaml            # OP Worker (bootstrap config)
 ├── otel-collector.yaml       # Routes logs to OP Worker
 ├── cloudprem.yaml            # Self-hosted log indexer
 └── ...
@@ -114,4 +101,3 @@ k8s/
 ## References
 
 - [Datadog Observability Pipelines](https://docs.datadoghq.com/observability_pipelines/)
-- [OP Worker Helm Chart](https://github.com/DataDog/helm-charts/tree/main/charts/observability-pipelines-worker)

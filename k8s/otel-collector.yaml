@@ -50,7 +50,7 @@ data:
       # OTLP exporter to OP Worker (for logs → CloudPrem)
       # OP Worker receives OTLP logs and forwards to CloudPrem indexer
       otlp/op-worker:
-        endpoint: "op-worker-observability-pipelines-worker:4317"
+        endpoint: "opw-observability-pipelines-worker:4317"
         tls:
           insecure: true
 
