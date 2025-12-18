@@ -185,6 +185,10 @@ This enables:
 - Route to multiple destinations
 - UI-managed configuration (edit pipeline in Datadog UI, worker auto-reloads)
 
+## OP Worker challenges 
+ - If you view from log UI you can see the log and then the trace and metrics etc.
+ - If you view the trace from the trace / APM part or Datadog, there is no way to select the cloudprem index and so you dont see the correlation ( even though its in the data ) .
+
 ## Troubleshooting
 
 ```bash
