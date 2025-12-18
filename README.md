@@ -6,12 +6,16 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 
 ## Features
 
+- **Maximum Observability** - Every request generates 6-10 correlated logs with full trace context
 - **JSON Structured Logging** - All app logs output in JSON format for easy parsing
 - **Trace Correlation** - Logs include standard OTLP `trace_id`/`span_id` for APM correlation
 - **Vendor-Agnostic** - Uses standard OpenTelemetry format (no Datadog-specific fields)
 - **OP Worker Integration** - Logs routed through Observability Pipelines for transformation
+- **Rich Span Attributes** - Database queries, HTTP details, timing metrics on every span
 
 ## Architecture
+
+<img width="1437" height="566" alt="Architecture Diagram" src="https://github.com/user-attachments/assets/b61b34c3-4b4b-4d40-93a3-020271a6701c" />
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -128,6 +132,29 @@ Go to [Logs](https://app.datadoghq.com/logs), select CloudPrem index, search `se
 | **Metrics** | App → OTEL Collector → Datadog SaaS Metrics |
 | **Logs** | App → OTEL Collector → **OP Worker** → CloudPrem |
 
+## Observability Per Request
+
+Each request generates **multiple correlated logs** sharing the same `trace_id`:
+
+| Endpoint | Logs per Trace | Spans per Trace |
+|----------|----------------|-----------------|
+| `/api/users` | 7 logs | 4 spans |
+| `/api/orders` | 9 logs | 6 spans |
+| `/api/slow` | 6 logs | 4+ spans |
+| `/error` | 6 logs | 3 spans |
+
+**Example trace for `/api/users`:**
+```
+trace_id: fb660b37912196669d0468e34a7879ad
+├── Request received (request_start)
+├── Starting user fetch operation
+├── Request validation passed
+├── Database query executed (query_time_ms, rows_returned)
+├── Data transformation complete
+├── User fetch completed successfully
+└── Request completed (duration_ms: 54.82)
+```
+
 ## Log Format
 
 Logs are output in JSON with standard OTLP trace context:
@@ -137,16 +164,19 @@ Logs are output in JSON with standard OTLP trace context:
   "timestamp": "2025-12-17T22:37:37.721915Z",
   "level": "INFO",
   "service": "sample-app",
-  "message": "Fetched users from database",
+  "message": "Database query executed",
   "trace_id": "b0bbce84cafe1528a9a018c9927813e5",
   "span_id": "5e2917fa0c9e787f",
-  "endpoint": "/api/users",
-  "user_count": 3
+  "request_id": "a945183e",
+  "db_system": "postgresql",
+  "db_operation": "SELECT",
+  "query_time_ms": 45.87,
+  "rows_returned": 3
 }
 ```
 
 This enables:
-- **Trace ↔ Log correlation** in Datadog APM
+- **Trace ↔ Log correlation** in Datadog APM (click trace → see all related logs)
 - **Structured querying** in Log Explorer
 - **Vendor-agnostic format** (standard OTLP, not Datadog-specific)
 
