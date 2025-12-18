@@ -37,6 +37,9 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
+<img width="1437" height="566" alt="image" src="https://github.com/user-attachments/assets/b61b34c3-4b4b-4d40-93a3-020271a6701c" />
+
+
 ## Prerequisites
 
 - Docker Desktop with Kubernetes enabled (kubeadm)
