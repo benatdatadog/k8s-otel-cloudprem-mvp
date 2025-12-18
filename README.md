@@ -15,8 +15,6 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 
 ## Architecture
 
-<img width="1437" height="566" alt="Architecture Diagram" src="https://github.com/user-attachments/assets/b61b34c3-4b4b-4d40-93a3-020271a6701c" />
-
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                      Docker Desktop Kubernetes                                │
