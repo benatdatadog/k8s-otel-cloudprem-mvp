@@ -3,12 +3,15 @@ Sample Flask application with OpenTelemetry instrumentation.
 Maximum observability: every trace has multiple correlated logs.
 """
 
+import datetime
 import logging
+import os
 import random
+import sys
 import time
 import uuid
+
 from flask import Flask, jsonify, request, g
-import os
 
 # JSON logging
 from pythonjsonlogger import jsonlogger
@@ -72,8 +75,6 @@ class CustomJsonFormatter(jsonlogger.JsonFormatter):
         log_record['environment'] = os.getenv("OTEL_ENVIRONMENT", "demo")
         log_record['level'] = record.levelname
         log_record['logger'] = record.name
-        
-        import datetime
         log_record['timestamp'] = datetime.datetime.utcfromtimestamp(record.created).isoformat() + "Z"
         
         # Inject standard OTLP trace context
@@ -93,7 +94,6 @@ root_logger.setLevel(logging.DEBUG)
 for handler in root_logger.handlers[:]:
     root_logger.removeHandler(handler)
 
-import sys
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(json_formatter)
 console_handler.setLevel(logging.DEBUG)
