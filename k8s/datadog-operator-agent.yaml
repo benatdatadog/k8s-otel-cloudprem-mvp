@@ -51,3 +51,14 @@ spec:
     apm:
       enabled: true
 
+    # Infrastructure metrics - required for APM Infrastructure tab
+    liveContainerCollection:
+      enabled: true
+    
+    liveProcessCollection:
+      enabled: true
+    
+    # Orchestrator Explorer for Kubernetes resources
+    orchestratorExplorer:
+      enabled: true
+

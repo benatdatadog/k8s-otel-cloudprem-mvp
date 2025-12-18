@@ -38,17 +38,9 @@ data:
             action: insert
 
     exporters:
-      # Datadog exporter for traces (direct to Datadog SaaS)
-      datadog:
-        api:
-          key: ${env:DD_API_KEY}
-          site: ${env:DD_SITE}
-        traces:
-          span_name_as_resource_name: true
-        hostname: "otel-demo-cluster"
-
-      # OTLP exporter to Datadog Agent (for logs → CloudPrem)
-      # DD Agent receives OTLP logs and forwards to CloudPrem indexer
+      # OTLP exporter to Datadog Agent
+      # DD Agent receives all telemetry (traces, metrics, logs) via OTLP
+      # and forwards to Datadog SaaS / CloudPrem
       otlp/datadog-agent:
         endpoint: "datadog-agent:4317"
         tls:
@@ -67,15 +59,16 @@ data:
     service:
       extensions: [health_check, zpages]
       pipelines:
+        # All telemetry flows through DD Agent via OTLP
+        # App → OTEL Collector → DD Agent → Datadog SaaS / CloudPrem
         traces:
           receivers: [otlp]
           processors: [memory_limiter, batch, resource]
-          exporters: [datadog, debug]
+          exporters: [otlp/datadog-agent, debug]
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [datadog]
-        # Logs: App → OTEL Collector → DD Agent (OTLP) → CloudPrem
+          exporters: [otlp/datadog-agent]
         logs:
           receivers: [otlp]
           processors: [memory_limiter, batch]

@@ -7,6 +7,10 @@ metadata:
   namespace: otel-demo
   labels:
     app: sample-app
+    # Datadog Unified Service Tagging
+    tags.datadoghq.com/env: "demo"
+    tags.datadoghq.com/service: "sample-app"
+    tags.datadoghq.com/version: "1.0.0"
 spec:
   replicas: 1
   selector:
@@ -16,6 +20,10 @@ spec:
     metadata:
       labels:
         app: sample-app
+        # Datadog Unified Service Tagging (required on pod template)
+        tags.datadoghq.com/env: "demo"
+        tags.datadoghq.com/service: "sample-app"
+        tags.datadoghq.com/version: "1.0.0"
       annotations:
         # Datadog Autodiscovery - explicitly configure log collection
         ad.datadoghq.com/sample-app.logs: '[{"source": "python", "service": "sample-app"}]'
@@ -23,11 +31,25 @@ spec:
       containers:
         - name: sample-app
           image: sample-app:latest
-          imagePullPolicy: Never  # Use local image loaded into Kind
+          imagePullPolicy: Never  # Use local image
           ports:
             - containerPort: 8080
               name: http
           env:
+            # Datadog Unified Service Tagging env vars
+            - name: DD_ENV
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/env']
+            - name: DD_SERVICE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/service']
+            - name: DD_VERSION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/version']
+            # OTEL config
             - name: OTEL_SERVICE_NAME
               value: "sample-app"
             - name: OTEL_ENVIRONMENT

@@ -1,8 +1,16 @@
 # K8s OTEL to Datadog CloudPrem - MVP
 
-A minimal proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes with:
-- **Traces & Metrics** → Datadog SaaS (via OTEL Collector)
-- **Logs** → Datadog CloudPrem (self-hosted, via DD Agent)
+A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes with **all telemetry flowing through the Datadog Agent**:
+- **Traces & Metrics** → DD Agent (OTLP) → Datadog SaaS
+- **Logs** → DD Agent (OTLP) → Datadog CloudPrem
+
+## Features
+
+- **Maximum Observability** - Every request generates 6-10 correlated logs with full trace context
+- **Unified Telemetry Pipeline** - All signals (traces, metrics, logs) flow through DD Agent
+- **Trace Correlation** - Logs include standard OTLP `trace_id`/`span_id` for APM correlation
+- **Vendor-Agnostic App** - Uses standard OpenTelemetry format (no Datadog-specific code)
+- **Rich Span Attributes** - Database queries, HTTP details, timing metrics on every span
 
 ## Architecture
 
@@ -11,18 +19,19 @@ A minimal proof-of-concept demonstrating OpenTelemetry instrumentation on Kubern
 │                      Docker Desktop Kubernetes                                │
 │                                                                               │
 │  ┌──────────────┐         ┌──────────────────┐                               │
-│  │  Sample App  │──OTLP──▶│  OTEL Collector  │──Traces/Metrics──▶ DD SaaS    │
+│  │  Sample App  │──OTLP──▶│  OTEL Collector  │                               │
 │  │  (Python)    │  :4317  │                  │                               │
 │  └──────────────┘         └────────┬─────────┘                               │
-│         │                          │                                          │
-│         │ stdout                   │ OTLP Logs                                │
-│         ▼                          ▼                                          │
+│                                    │                                          │
+│                                    │ OTLP (traces, metrics, logs)             │
+│                                    ▼                                          │
 │  ┌──────────────────────────────────────────┐                                │
-│  │           Datadog Agent (Operator)        │                                │
-│  │  • Collects container logs (stdout)       │                                │
-│  │  • Receives OTLP logs on :4317            │                                │
+│  │           Datadog Agent (Operator)        │──Traces/Metrics──▶ DD SaaS    │
+│  │  • Receives ALL telemetry via OTLP :4317  │                                │
+│  │  • Forwards traces/metrics to DD SaaS     │                                │
+│  │  • Forwards logs to CloudPrem             │                                │
 │  └────────────────────┬─────────────────────┘                                │
-│                       │                                                       │
+│                       │ Logs                                                  │
 │                       ▼                                                       │
 │  ┌──────────────────┐         ┌──────────────────┐                           │
 │  │    CloudPrem     │◀───────▶│   Datadog SaaS   │                           │
@@ -106,12 +115,24 @@ EOF
 
 ## Data Flow
 
+All telemetry flows through the DD Agent via OTLP:
+
 | Signal | Path |
 |--------|------|
-| **Traces** | App → OTEL Collector → Datadog SaaS APM |
-| **Metrics** | App → OTEL Collector → Datadog SaaS Metrics |
-| **Logs (OTLP)** | App → OTEL Collector → DD Agent OTLP → CloudPrem |
-| **Logs (stdout)** | Container → DD Agent → CloudPrem |
+| **Traces** | App → OTEL Collector → **DD Agent** → Datadog SaaS APM |
+| **Metrics** | App → OTEL Collector → **DD Agent** → Datadog SaaS Metrics |
+| **Logs** | App → OTEL Collector → **DD Agent** → CloudPrem |
+
+## Observability Per Request
+
+Each request generates **multiple correlated logs** sharing the same `trace_id`:
+
+| Endpoint | Logs per Trace | Spans per Trace |
+|----------|----------------|-----------------|
+| `/api/users` | 7 logs | 4 spans |
+| `/api/orders` | 9 logs | 6 spans |
+| `/api/slow` | 6 logs | 4+ spans |
+| `/error` | 6 logs | 3 spans |
 
 ## Key Configuration
 
