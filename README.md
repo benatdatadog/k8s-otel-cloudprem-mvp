@@ -97,20 +97,24 @@ helm upgrade --install opw \
   --set datadog.apiKey=$DD_API_KEY \
   --set datadog.pipelineId=$DD_OP_PIPELINE_ID \
   --set datadog.site=datadoghq.com \
-  --set 'env[0].name=DD_OP_SOURCE_OTLP_GRPC_ADDRESS' \
+  --set 'env[0].name=DD_OP_SOURCE_OTEL_GRPC_ADDRESS' \
   --set 'env[0].value=0.0.0.0:4317' \
-  --set 'env[1].name=DD_OP_SOURCE_OTLP_HTTP_ADDRESS' \
+  --set 'env[1].name=DD_OP_SOURCE_OTEL_HTTP_ADDRESS' \
   --set 'env[1].value=0.0.0.0:4318' \
-  --set 'service.ports[0].name=otlp-grpc' \
+  --set 'env[2].name=DD_OP_DESTINATION_CLOUDPREM_ENDPOINT_URL' \
+  --set 'env[2].value=http://cloudprem-indexer.cloudprem.svc.cluster.local:7280' \
+  --set 'service.ports[0].name=dd-op-source-otel-grpc-address-port' \
   --set 'service.ports[0].protocol=TCP' \
   --set 'service.ports[0].port=4317' \
   --set 'service.ports[0].targetPort=4317' \
-  --set 'service.ports[1].name=otlp-http' \
+  --set 'service.ports[1].name=dd-op-source-otel-http-address-port' \
   --set 'service.ports[1].protocol=TCP' \
   --set 'service.ports[1].port=4318' \
   --set 'service.ports[1].targetPort=4318' \
   datadog/observability-pipelines-worker
 ```
+
+> **Note**: The env var names (`DD_OP_SOURCE_OTEL_*`, `DD_OP_DESTINATION_*`) must match exactly what's configured in your Datadog UI pipeline.
 
 </details>
 
@@ -202,6 +206,55 @@ kubectl logs -n otel-demo -l app.kubernetes.io/name=observability-pipelines-work
 
 # Check OTEL Collector
 kubectl logs -l app=otel-collector -n otel-demo --tail=30
+```
+
+## Learnings / Gotchas
+
+Key lessons from setting up this PoC:
+
+### 1. Environment Variable Naming
+The OP Worker expects env vars with `DD_OP_` prefix, and **names must match exactly** what's configured in the Datadog UI pipeline:
+```bash
+DD_OP_SOURCE_OTEL_GRPC_ADDRESS=0.0.0.0:4317
+DD_OP_SOURCE_OTEL_HTTP_ADDRESS=0.0.0.0:4318
+DD_OP_DESTINATION_CLOUDPREM_ENDPOINT_URL=http://cloudprem-indexer.cloudprem.svc.cluster.local:7280
+```
+Check your pipeline config in the UI to see the exact variable names expected.
+
+### 2. Dedupe Processor Can Be Aggressive
+The **dedupe transform** can drop up to 99% of logs if messages are similar. Check transform metrics via the OP Worker GraphQL API:
+```bash
+kubectl exec -n otel-demo <opw-pod> -- curl -s 'http://localhost:8686/graphql' \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"{ transforms { edges { node { componentType metrics { receivedEventsTotal { receivedEventsTotal } sentEventsTotal { sentEventsTotal } } } } } }"}'
+```
+
+### 3. Disable DD Agent Container Log Collection
+If the DD Agent has `containerCollectAll: true`, logs appear in **both** CloudPrem (via OP) AND Datadog SaaS (via Agent). For OP-only log routing, disable it:
+```yaml
+# k8s/datadog-operator-agent.yaml
+features:
+  logCollection:
+    enabled: false
+    containerCollectAll: false
+```
+
+### 4. Cross-Namespace DNS
+CloudPrem runs in `cloudprem` namespace, OP Worker in `otel-demo`. Use FQDN:
+```
+http://cloudprem-indexer.cloudprem.svc.cluster.local:7280
+```
+
+### 5. OP Worker GraphQL API for Debugging
+The OP Worker exposes metrics at port 8686. Check source/sink/transform stats to identify where data is being filtered:
+```bash
+# Source metrics (what's coming in)
+kubectl exec -n otel-demo <opw-pod> -- curl -s 'http://localhost:8686/graphql' \
+  -d '{"query":"{ sources { edges { node { componentType metrics { receivedEventsTotal { receivedEventsTotal } } } } } }"}'
+
+# Sink metrics (what's going out)
+kubectl exec -n otel-demo <opw-pod> -- curl -s 'http://localhost:8686/graphql' \
+  -d '{"query":"{ sinks { edges { node { componentType metrics { sentEventsTotal { sentEventsTotal } } } } } }"}'
 ```
 
 ## References

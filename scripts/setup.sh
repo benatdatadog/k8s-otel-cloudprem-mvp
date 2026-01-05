@@ -170,10 +170,12 @@ helm upgrade --install opw \
     --set service.ports[1].protocol=TCP \
     --set service.ports[1].port=4318 \
     --set service.ports[1].targetPort=4318 \
-    --set env[0].name=DD_OP_SOURCE_OTLP_GRPC_ADDRESS \
+    --set env[0].name=SOURCE_OTEL_GRPC_ADDRESS \
     --set env[0].value=0.0.0.0:4317 \
-    --set env[1].name=DD_OP_SOURCE_OTLP_HTTP_ADDRESS \
+    --set env[1].name=SOURCE_OTEL_HTTP_ADDRESS \
     --set env[1].value=0.0.0.0:4318 \
+    --set env[2].name=DESTINATION_CLOUDPREM_ENDPOINT_URL \
+    --set env[2].value=http://cloudprem-indexer.cloudprem.svc.cluster.local:7280 \
     datadog/observability-pipelines-worker \
     --wait --timeout=300s
 echo -e "${GREEN}✓ OP Worker installed${NC}"

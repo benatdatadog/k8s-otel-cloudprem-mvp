@@ -20,11 +20,11 @@ spec:
       tlsVerify: false
 
   features:
-    # Container log collection (stdout/stderr) → DD SaaS
-    # Note: OTLP logs go through OP Worker → CloudPrem instead
+    # Container log collection DISABLED for OP branch
+    # All logs flow through: App → OTEL Collector → OP Worker → CloudPrem
     logCollection:
-      enabled: true
-      containerCollectAll: true
+      enabled: false
+      containerCollectAll: false
 
     # Prometheus scraping for infrastructure metrics
     prometheusScrape:
