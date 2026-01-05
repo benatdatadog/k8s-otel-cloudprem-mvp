@@ -10,8 +10,7 @@ import random
 import sys
 import time
 import uuid
-
-from flask import Flask, jsonify, request, g
+from flask import Flask, jsonify, request, g, render_template_string
 
 # JSON logging
 from pythonjsonlogger import jsonlogger
@@ -109,6 +108,338 @@ logger = logging.getLogger(__name__)
 # Create Flask app
 app = Flask(__name__)
 
+# HTML Template for Web UI
+HTML_TEMPLATE = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OTEL Demo App</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --accent: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-orange: #d29922;
+            --accent-red: #f85149;
+            --accent-purple: #a371f7;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --border: #30363d;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-purple) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+        
+        .flow-diagram {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+        
+        .flow-diagram .highlight { color: var(--accent); }
+        .flow-diagram .green { color: var(--accent-green); }
+        .flow-diagram .orange { color: var(--accent-orange); }
+        
+        .endpoints {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .endpoint-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.2s ease;
+        }
+        
+        .endpoint-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+        
+        .endpoint-card h3 {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+        }
+        
+        .endpoint-card p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.8rem;
+        }
+        
+        .stat {
+            background: var(--bg-tertiary);
+            padding: 0.3rem 0.6rem;
+            border-radius: 6px;
+        }
+        
+        .stat-logs { color: var(--accent-green); }
+        .stat-spans { color: var(--accent-purple); }
+        
+        button {
+            width: 100%;
+            padding: 0.75rem 1.5rem;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        button:hover {
+            background: var(--accent);
+            color: var(--bg-primary);
+            border-color: var(--accent);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        button.error-btn:hover { background: var(--accent-red); border-color: var(--accent-red); }
+        button.slow-btn:hover { background: var(--accent-orange); border-color: var(--accent-orange); }
+        
+        .response-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+        
+        .response-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .response-header h2 {
+            font-size: 1.2rem;
+            color: var(--text-primary);
+        }
+        
+        .trace-id {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-purple);
+            background: var(--bg-tertiary);
+            padding: 0.3rem 0.6rem;
+            border-radius: 6px;
+        }
+        
+        #response {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            min-height: 200px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        
+        .loading {
+            color: var(--text-secondary);
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .success { color: var(--accent-green); }
+        .error { color: var(--accent-red); }
+        
+        footer {
+            text-align: center;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+        
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔭 OTEL Demo App</h1>
+            <p class="subtitle">OpenTelemetry → Observability Pipelines → CloudPrem</p>
+        </header>
+        
+        <div class="flow-diagram">
+            <span class="highlight">App</span> → OTEL Collector → 
+            <span class="orange">OP Worker</span> → 
+            <span class="green">CloudPrem</span>
+        </div>
+        
+        <div class="endpoints">
+            <div class="endpoint-card">
+                <h3>GET /api/users</h3>
+                <p>Fetch users with database query simulation</p>
+                <div class="stats">
+                    <span class="stat stat-logs">📝 7 logs</span>
+                    <span class="stat stat-spans">🔗 4 spans</span>
+                </div>
+                <button onclick="callEndpoint('/api/users')">Fetch Users</button>
+            </div>
+            
+            <div class="endpoint-card">
+                <h3>GET /api/orders</h3>
+                <p>Process orders with auth and enrichment</p>
+                <div class="stats">
+                    <span class="stat stat-logs">📝 9 logs</span>
+                    <span class="stat stat-spans">🔗 6 spans</span>
+                </div>
+                <button onclick="callEndpoint('/api/orders')">Get Orders</button>
+            </div>
+            
+            <div class="endpoint-card">
+                <h3>GET /api/slow</h3>
+                <p>Simulate slow operation (0.5-2s delay)</p>
+                <div class="stats">
+                    <span class="stat stat-logs">📝 6 logs</span>
+                    <span class="stat stat-spans">🔗 4+ spans</span>
+                </div>
+                <button class="slow-btn" onclick="callEndpoint('/api/slow')">Slow Request</button>
+            </div>
+            
+            <div class="endpoint-card">
+                <h3>GET /error</h3>
+                <p>Trigger random error for error tracing</p>
+                <div class="stats">
+                    <span class="stat stat-logs">📝 6 logs</span>
+                    <span class="stat stat-spans">🔗 3 spans</span>
+                </div>
+                <button class="error-btn" onclick="callEndpoint('/error')">Trigger Error</button>
+            </div>
+        </div>
+        
+        <div class="response-section">
+            <div class="response-header">
+                <h2>Response</h2>
+                <span class="trace-id" id="trace-id">trace_id: waiting...</span>
+            </div>
+            <pre id="response">Click an endpoint above to generate traffic and see the response here.
+
+Each request generates correlated logs and traces that flow through:
+  • OTEL Collector (receives OTLP data)
+  • OP Worker (transforms and routes)  
+  • CloudPrem (indexes logs)
+
+Check Datadog for:
+  • Traces: APM → Traces → service:sample-app
+  • Logs: Logs → select CloudPrem index
+  • Pipeline: Observability Pipelines</pre>
+        </div>
+        
+        <footer>
+            <p>Part of the <a href="https://github.com/benatdatadog/k8s-otel-cloudprem-mvp">K8s OTEL to CloudPrem</a> demo</p>
+        </footer>
+    </div>
+    
+    <script>
+        async function callEndpoint(path) {
+            const responseEl = document.getElementById('response');
+            const traceIdEl = document.getElementById('trace-id');
+            
+            responseEl.className = 'loading';
+            responseEl.textContent = `Calling ${path}...`;
+            traceIdEl.textContent = 'trace_id: generating...';
+            
+            try {
+                const start = performance.now();
+                const res = await fetch(path);
+                const duration = Math.round(performance.now() - start);
+                const data = await res.json();
+                
+                responseEl.className = res.ok ? 'success' : 'error';
+                responseEl.textContent = JSON.stringify(data, null, 2);
+                
+                if (data.request_id) {
+                    traceIdEl.textContent = `request_id: ${data.request_id} | ${duration}ms`;
+                }
+            } catch (err) {
+                responseEl.className = 'error';
+                responseEl.textContent = `Error: ${err.message}`;
+                traceIdEl.textContent = 'trace_id: error';
+            }
+        }
+    </script>
+</body>
+</html>
+'''
+
 # Instrument Flask
 FlaskInstrumentor().instrument_app(app)
 RequestsInstrumentor().instrument()
@@ -169,27 +500,39 @@ def after_request(response):
 
 @app.route("/")
 def home():
-    """Home endpoint with full tracing."""
+    """Home page with web UI."""
     with tracer.start_as_current_span("home-handler", kind=trace.SpanKind.INTERNAL) as span:
         span.set_attribute("http.route", "/")
         span.set_attribute("handler.name", "home")
+        span.set_attribute("response.type", "html")
         
-        logger.info("Processing home request", extra={
+        logger.info("Serving web UI", extra={
             "request_id": g.request_id,
             "handler": "home",
+            "response_type": "html"
+        })
+        
+        return render_template_string(HTML_TEMPLATE)
+
+
+@app.route("/api")
+def api_home():
+    """API home endpoint with JSON response."""
+    with tracer.start_as_current_span("api-home-handler", kind=trace.SpanKind.INTERNAL) as span:
+        span.set_attribute("http.route", "/api")
+        span.set_attribute("handler.name", "api_home")
+        
+        logger.info("Processing API home request", extra={
+            "request_id": g.request_id,
+            "handler": "api_home",
             "action": "processing"
         })
         
-        endpoints = ["/", "/api/users", "/api/orders", "/api/slow", "/error", "/health"]
+        endpoints = ["/", "/api", "/api/users", "/api/orders", "/api/slow", "/error", "/health"]
         span.set_attribute("response.endpoint_count", len(endpoints))
         
-        logger.debug("Building response payload", extra={
-            "request_id": g.request_id,
-            "endpoint_count": len(endpoints)
-        })
-        
         return jsonify({
-            "message": "Welcome to the OTEL Demo App!",
+            "message": "Welcome to the OTEL Demo App API!",
             "endpoints": endpoints,
             "request_id": g.request_id
         })
