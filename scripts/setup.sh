@@ -133,22 +133,11 @@ kubectl apply -f k8s/otel-collector.yaml
 echo -e "${GREEN}✓ OTEL Collector deployed${NC}"
 echo ""
 
-# Deploy OP Worker (Observability Pipelines)
-echo -e "${YELLOW}Deploying OP Worker...${NC}"
+# Deploy OP Worker (Observability Pipelines) - Local Config Mode
+# Uses Vector with local config instead of Datadog bootstrap (no Pipeline ID needed)
+echo -e "${YELLOW}Deploying OP Worker (local config mode)...${NC}"
 kubectl apply -f k8s/op-worker.yaml
 echo -e "${GREEN}✓ OP Worker deployed${NC}"
-echo ""
-
-# Install OP Worker (Observability Pipelines)
-echo -e "${YELLOW}Installing OP Worker...${NC}"
-helm repo add datadog https://helm.datadoghq.com 2>/dev/null || true
-helm repo update
-helm upgrade --install op-worker \
-    --namespace otel-demo \
-    -f k8s/op-worker-values.yaml \
-    --set datadog.apiKey="$DD_API_KEY" \
-    datadog/observability-pipelines-worker
-echo -e "${GREEN}✓ OP Worker installed${NC}"
 echo ""
 
 # Install Datadog Operator
@@ -178,6 +167,7 @@ echo ""
 echo -e "${YELLOW}Waiting for pods to be ready...${NC}"
 kubectl rollout status deployment/cloudprem-indexer -n cloudprem --timeout=180s
 kubectl rollout status deployment/otel-collector -n otel-demo --timeout=120s
+kubectl rollout status statefulset/opw-observability-pipelines-worker -n otel-demo --timeout=180s || true
 kubectl rollout status deployment/sample-app -n otel-demo --timeout=120s
 echo -e "${GREEN}✓ All pods ready${NC}"
 echo ""

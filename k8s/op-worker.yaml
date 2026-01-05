@@ -1,0 +1,154 @@
+---
+# Observability Pipelines Worker - Local Configuration Mode
+# Receives OTLP logs from OTEL Collector and forwards to CloudPrem
+# No Datadog UI Pipeline ID required
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: op-worker-config
+  namespace: otel-demo
+data:
+  # Vector/OP Worker configuration
+  vector.yaml: |
+    # Data directory for persistence
+    data_dir: /var/lib/vector
+
+    # API for health checks
+    api:
+      enabled: true
+      address: "0.0.0.0:8686"
+
+    # OTLP source - receives telemetry from OTEL Collector
+    # Outputs: otel.logs, otel.metrics, otel.traces
+    sources:
+      otel:
+        type: opentelemetry
+        grpc:
+          address: "0.0.0.0:4317"
+        http:
+          address: "0.0.0.0:4318"
+
+    # Transform logs to Datadog format
+    transforms:
+      format_logs:
+        type: remap
+        inputs:
+          - otel.logs
+        source: |
+          # Add Datadog source tag
+          .ddsource = "otel-pipeline"
+          .ddtags = "env:demo,source:op-worker"
+
+    # Sink logs to CloudPrem
+    sinks:
+      cloudprem:
+        type: datadog_logs
+        inputs:
+          - format_logs
+        endpoint: "http://cloudprem-indexer.cloudprem.svc.cluster.local:7280"
+        default_api_key: "${DD_API_KEY}"
+        compression: none
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: opw-observability-pipelines-worker
+  namespace: otel-demo
+  labels:
+    app: op-worker
+spec:
+  serviceName: opw-observability-pipelines-worker
+  replicas: 1
+  selector:
+    matchLabels:
+      app: op-worker
+  template:
+    metadata:
+      labels:
+        app: op-worker
+    spec:
+      containers:
+        - name: op-worker
+          image: timberio/vector:0.34.1-alpine
+          args:
+            - --config
+            - /etc/vector/vector.yaml
+          ports:
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 4318
+              name: otlp-http
+            - containerPort: 8686
+              name: api
+          env:
+            - name: DD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: datadog-secrets
+                  key: api-key
+            - name: VECTOR_LOG
+              value: "info"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/vector
+            - name: data
+              mountPath: /var/lib/vector
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8686
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8686
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: op-worker-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opw-observability-pipelines-worker
+  namespace: otel-demo
+  labels:
+    app: op-worker
+spec:
+  selector:
+    app: op-worker
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+    - name: api
+      port: 8686
+      targetPort: 8686
+      protocol: TCP
+
