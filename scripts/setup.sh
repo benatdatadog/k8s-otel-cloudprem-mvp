@@ -75,15 +75,33 @@ echo ""
 if [ -z "$DD_API_KEY" ]; then
     echo -e "${RED}Error: DD_API_KEY environment variable is not set${NC}"
     echo ""
-    echo "Create a .env file with your Datadog API key:"
-    echo "  echo 'DD_API_KEY=your-api-key-here' > .env"
-    echo "  echo 'DD_SITE=datadoghq.com' >> .env"
+    echo "Create a .env file with your Datadog credentials:"
+    echo "  DD_API_KEY=your-api-key-here"
+    echo "  DD_SITE=datadoghq.com"
+    echo "  DD_OP_PIPELINE_ID=your-pipeline-id  # From Datadog UI"
+    exit 1
+fi
+
+# Check for OP Pipeline ID
+if [ -z "$DD_OP_PIPELINE_ID" ]; then
+    echo -e "${RED}Error: DD_OP_PIPELINE_ID environment variable is not set${NC}"
+    echo ""
+    echo "Create a Pipeline in Datadog UI first:"
+    echo "  1. Go to https://app.datadoghq.com/observability-pipelines"
+    echo "  2. Create New Pipeline with:"
+    echo "     - Source: OpenTelemetry"
+    echo "     - Destination: Datadog Logs"
+    echo "     - Destination URL: http://cloudprem-indexer.cloudprem.svc.cluster.local:7280"
+    echo "  3. Deploy and copy the Pipeline ID"
+    echo "  4. Add to .env: DD_OP_PIPELINE_ID=your-pipeline-id"
     exit 1
 fi
 
 DD_SITE="${DD_SITE:-datadoghq.com}"
 echo -e "${GREEN}✓ Datadog API key found${NC}"
+echo -e "${GREEN}✓ OP Pipeline ID found${NC}"
 echo -e "${BLUE}  Using Datadog site: ${DD_SITE}${NC}"
+echo -e "${BLUE}  Using Pipeline ID: ${DD_OP_PIPELINE_ID}${NC}"
 echo ""
 
 # Create namespaces
@@ -133,11 +151,32 @@ kubectl apply -f k8s/otel-collector.yaml
 echo -e "${GREEN}✓ OTEL Collector deployed${NC}"
 echo ""
 
-# Deploy OP Worker (Observability Pipelines) - Local Config Mode
-# Uses Vector with local config instead of Datadog bootstrap (no Pipeline ID needed)
-echo -e "${YELLOW}Deploying OP Worker (local config mode)...${NC}"
-kubectl apply -f k8s/op-worker.yaml
-echo -e "${GREEN}✓ OP Worker deployed${NC}"
+# Install OP Worker (Observability Pipelines) via Helm
+# Uses official Datadog OP Worker with Pipeline ID from UI
+echo -e "${YELLOW}Installing OP Worker via Helm...${NC}"
+helm repo add datadog https://helm.datadoghq.com 2>/dev/null || true
+helm repo update datadog
+
+helm upgrade --install opw \
+    --namespace otel-demo \
+    --set datadog.apiKey="$DD_API_KEY" \
+    --set datadog.pipelineId="$DD_OP_PIPELINE_ID" \
+    --set datadog.site="$DD_SITE" \
+    --set service.ports[0].name=otlp-grpc \
+    --set service.ports[0].protocol=TCP \
+    --set service.ports[0].port=4317 \
+    --set service.ports[0].targetPort=4317 \
+    --set service.ports[1].name=otlp-http \
+    --set service.ports[1].protocol=TCP \
+    --set service.ports[1].port=4318 \
+    --set service.ports[1].targetPort=4318 \
+    --set env[0].name=DD_OP_SOURCE_OTLP_GRPC_ADDRESS \
+    --set env[0].value=0.0.0.0:4317 \
+    --set env[1].name=DD_OP_SOURCE_OTLP_HTTP_ADDRESS \
+    --set env[1].value=0.0.0.0:4318 \
+    datadog/observability-pipelines-worker \
+    --wait --timeout=300s
+echo -e "${GREEN}✓ OP Worker installed${NC}"
 echo ""
 
 # Install Datadog Operator

@@ -50,89 +50,81 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 
 ## Setup
 
-### 1. Create Pipeline in Datadog UI
+### 1. Create Pipeline in Datadog UI (Required)
 
-1. Go to [Observability Pipelines](https://app.datadoghq.com/observability-pipelines)
-2. Create new pipeline with:
-   - **Source**: OpenTelemetry (OTLP) - endpoint `0.0.0.0:4317`
-   - **Destination**: Datadog Logs - endpoint `http://cloudprem-indexer.cloudprem.svc.cluster.local:7280`
-3. Save and **Deploy** the pipeline
-4. Copy the **Pipeline ID**
+1. Go to **[Observability Pipelines](https://app.datadoghq.com/observability-pipelines)**
+2. Click **New Pipeline**
+3. Configure:
+   - **Source**: OpenTelemetry - listen on `0.0.0.0:4317`
+   - **Destination**: Datadog Logs
+   - **Destination endpoint**: `http://cloudprem-indexer.cloudprem.svc.cluster.local:7280`
+4. Click **Deploy** and **copy the Pipeline ID**
 
-### 2. Deploy CloudPrem and OTEL Collector
+### 2. Create `.env` file
 
 ```bash
-# Create .env with your API key
-echo 'DD_API_KEY=your-api-key' > .env
-source .env
-
-# Deploy CloudPrem
-kubectl apply -f k8s/namespace.yaml
-kubectl create namespace cloudprem
-kubectl create secret generic datadog-secrets --from-literal=api-key=$DD_API_KEY -n otel-demo
-kubectl create secret generic datadog-secrets --from-literal=api-key=$DD_API_KEY -n cloudprem
-kubectl apply -f k8s/cloudprem.yaml
-
-# Build and deploy sample app
-docker build -t sample-app:latest ./app
-kubectl apply -f k8s/sample-app.yaml
-
-# Deploy OTEL Collector
-kubectl apply -f k8s/otel-collector.yaml
+cat > .env << 'EOF'
+DD_API_KEY=your-datadog-api-key
+DD_SITE=datadoghq.com
+DD_OP_PIPELINE_ID=your-pipeline-id-from-step-1
+EOF
 ```
 
-### 3. Install OP Worker via Helm
+### 3. Deploy everything
 
-Use the command from the Datadog UI (with zsh-safe quoting):
+```bash
+./scripts/setup.sh
+```
+
+This deploys: CloudPrem, OTEL Collector, **OP Worker (via Helm)**, DD Agent, and sample app.
+
+### 4. Access the app
+
+```bash
+curl localhost:30080              # Home
+curl localhost:30080/api/users    # 7 logs, 4 spans
+curl localhost:30080/api/orders   # 9 logs, 6 spans
+```
+
+---
+
+<details>
+<summary>Manual Helm install (alternative)</summary>
 
 ```bash
 helm upgrade --install opw \
   --namespace otel-demo \
   --set datadog.apiKey=$DD_API_KEY \
-  --set datadog.pipelineId=YOUR_PIPELINE_ID \
+  --set datadog.pipelineId=$DD_OP_PIPELINE_ID \
   --set datadog.site=datadoghq.com \
-  --set-string 'env[0].name=DD_OP_SOURCE_OTEL_HTTP_ADDRESS' \
-  --set-string 'env[0].value=0.0.0.0:4318' \
-  --set-string 'env[1].name=DD_OP_SOURCE_OTEL_GRPC_ADDRESS' \
-  --set-string 'env[1].value=0.0.0.0:4317' \
-  --set-string 'env[2].name=DD_OP_DESTINATION_CLOUDPREM_ENDPOINT_URL' \
-  --set-string 'env[2].value=http://cloudprem-indexer.cloudprem.svc.cluster.local:7280' \
-  --set 'service.ports[0].name=otel-http' \
+  --set 'env[0].name=DD_OP_SOURCE_OTLP_GRPC_ADDRESS' \
+  --set 'env[0].value=0.0.0.0:4317' \
+  --set 'env[1].name=DD_OP_SOURCE_OTLP_HTTP_ADDRESS' \
+  --set 'env[1].value=0.0.0.0:4318' \
+  --set 'service.ports[0].name=otlp-grpc' \
   --set 'service.ports[0].protocol=TCP' \
-  --set 'service.ports[0].port=4318' \
-  --set 'service.ports[0].targetPort=4318' \
-  --set 'service.ports[1].name=otel-grpc' \
+  --set 'service.ports[0].port=4317' \
+  --set 'service.ports[0].targetPort=4317' \
+  --set 'service.ports[1].name=otlp-http' \
   --set 'service.ports[1].protocol=TCP' \
-  --set 'service.ports[1].port=4317' \
-  --set 'service.ports[1].targetPort=4317' \
+  --set 'service.ports[1].port=4318' \
+  --set 'service.ports[1].targetPort=4318' \
   datadog/observability-pipelines-worker
 ```
 
-### 4. Deploy the pipeline in Datadog UI
+</details>
 
-After Helm install, go back to the Datadog UI and click **Deploy** on your pipeline.
-
-### 5. Access the app
-
-The sample app is exposed via NodePort on `localhost:30080`:
-
-```bash
-curl localhost:30080              # Home - list endpoints
-curl localhost:30080/api/users    # Get users (7 logs, 4 spans)
-curl localhost:30080/api/orders   # Get orders (9 logs, 6 spans)
-curl localhost:30080/api/slow     # Slow operation (latency tracing)
-curl localhost:30080/error        # Error simulation
-```
-
-### 6. Generate traffic
+### 5. Generate traffic
 
 ```bash
 ./scripts/generate-traffic.sh
 ```
 
-### 7. View in Datadog
+### 6. View in Datadog
 
-Go to [Logs](https://app.datadoghq.com/logs), select CloudPrem index, search `service:sample-app`.
+- **Traces**: [APM → Traces](https://app.datadoghq.com/apm/traces) - `service:sample-app`
+- **Logs**: [Logs](https://app.datadoghq.com/logs) - select CloudPrem index
+- **OP Metrics**: [Observability Pipelines](https://app.datadoghq.com/observability-pipelines) - pipeline stats
 
 ## Data Flow
 
