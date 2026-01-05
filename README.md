@@ -43,7 +43,7 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 
 ## UI - available at http://localhost:30080/
 
-<img width="1113" height="946" alt="image" src="https://github.com/user-attachments/assets/0089b917-0529-4b18-849a-13c88b3386a3" />
+<img width="1041" height="986" alt="image" src="https://github.com/user-attachments/assets/41fb3172-31bd-4ed8-9f8c-f3a140083828" />
 
 
 
