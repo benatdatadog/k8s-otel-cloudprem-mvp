@@ -334,12 +334,13 @@ HTML_TEMPLATE = '''
     <div class="container">
         <header>
             <h1>🔭 OTEL Demo App</h1>
-            <p class="subtitle">OpenTelemetry → Datadog SaaS</p>
+            <p class="subtitle">OpenTelemetry → CloudPrem (Logs) + Datadog SaaS (Traces/Metrics)</p>
         </header>
         
         <div class="flow-diagram">
             <span class="highlight">App</span> → OTEL Collector → 
-            <span class="green">Datadog SaaS</span>
+            <span class="green">CloudPrem</span> (Logs) | 
+            <span class="highlight">DD SaaS</span> (T+M)
         </div>
         
         <div class="endpoints">
@@ -393,11 +394,12 @@ HTML_TEMPLATE = '''
 
 Each request generates correlated logs and traces that flow through:
   • OTEL Collector (receives OTLP data)
-  • Datadog SaaS (traces, metrics, logs)
+  • CloudPrem (indexes logs)
+  • Datadog SaaS (traces + metrics)
 
 Check Datadog for:
   • Traces: APM → Traces → service:sample-app
-  • Logs: Logs → service:sample-app
+  • Logs: Logs → select CloudPrem index
   • Metrics: Metrics Explorer</pre>
         </div>
         
