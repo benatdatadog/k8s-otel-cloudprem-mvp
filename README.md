@@ -79,13 +79,25 @@ EOF
 ./scripts/setup.sh
 ```
 
-### 3. Generate traffic
+### 3. Access the app
+
+The sample app is exposed via NodePort on `localhost:30080`:
+
+```bash
+curl localhost:30080              # Home - list endpoints
+curl localhost:30080/api/users    # Get users (7 logs, 4 spans)
+curl localhost:30080/api/orders   # Get orders (9 logs, 6 spans)
+curl localhost:30080/api/slow     # Slow operation (latency tracing)
+curl localhost:30080/error        # Error simulation
+```
+
+### 4. Generate traffic
 
 ```bash
 ./scripts/generate-traffic.sh
 ```
 
-### 4. View in Datadog
+### 5. View in Datadog
 
 | Signal | Where to Find It |
 |--------|------------------|
