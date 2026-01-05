@@ -60,9 +60,9 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 1. Go to **[Observability Pipelines](https://app.datadoghq.com/observability-pipelines)**
 2. Click **New Pipeline**
 3. Configure:
-   - **Source**: OpenTelemetry - listen on `0.0.0.0:4317`
+   - **Source**: OpenTelemetry (OTLP) - address `0.0.0.0:4317`
    - **Destination**: Datadog CloudPrem
-   - **Destination endpoint**: `${DESTINATION_CLOUDPREM_ENDPOINT_URL}`
+   - **Endpoint**: `http://cloudprem-indexer.cloudprem.svc.cluster.local:7280`
 4. Click **Deploy** and **copy the Pipeline ID**
 
 ### 2. Create `.env` file
