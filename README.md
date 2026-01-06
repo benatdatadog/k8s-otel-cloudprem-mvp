@@ -55,15 +55,18 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 
 ## Setup
 
-### 1. Create Pipeline in Datadog UI (Required)
+### 1. Create Pipeline in Datadog UI
 
 1. Go to **[Observability Pipelines](https://app.datadoghq.com/observability-pipelines)**
 2. Click **New Pipeline**
 3. Configure:
-   - **Source**: OpenTelemetry (OTLP) - address `0.0.0.0:4317`
-   - **Destination**: Datadog CloudPrem
-   - **Endpoint**: `http://cloudprem-indexer.cloudprem.svc.cluster.local:7280`
+   - **Source**: OpenTelemetry
+     - GRPC Address: `${SOURCE_OTEL_GRPC_ADDRESS}` (use this exact variable name)
+   - **Destination**: Datadog CloudPrem  
+     - Endpoint: `${DESTINATION_CLOUDPREM_ENDPOINT_URL}` (use this exact variable name)
 4. Click **Deploy** and **copy the Pipeline ID**
+
+> **Note**: The actual values are provided by Helm during deployment. The UI just needs the variable placeholders.
 
 ### 2. Create `.env` file
 
@@ -81,47 +84,15 @@ EOF
 ./scripts/setup.sh
 ```
 
-This deploys: CloudPrem, OTEL Collector, **OP Worker (via Helm)**, DD Agent, and sample app.
+This deploys: CloudPrem, OTEL Collector, OP Worker (via Helm), DD Agent, and sample app.
 
 ### 4. Access the app
 
 ```bash
-curl localhost:30080              # Home
+curl localhost:30080              # Home (Web UI)
 curl localhost:30080/api/users    # 7 logs, 4 spans
 curl localhost:30080/api/orders   # 9 logs, 6 spans
 ```
-
----
-
-<details>
-<summary>Manual Helm install (alternative)</summary>
-
-```bash
-helm upgrade --install opw \
-  --namespace otel-demo \
-  --set datadog.apiKey=$DD_API_KEY \
-  --set datadog.pipelineId=$DD_OP_PIPELINE_ID \
-  --set datadog.site=datadoghq.com \
-  --set 'env[0].name=DD_OP_SOURCE_OTEL_GRPC_ADDRESS' \
-  --set 'env[0].value=0.0.0.0:4317' \
-  --set 'env[1].name=DD_OP_SOURCE_OTEL_HTTP_ADDRESS' \
-  --set 'env[1].value=0.0.0.0:4318' \
-  --set 'env[2].name=DD_OP_DESTINATION_CLOUDPREM_ENDPOINT_URL' \
-  --set 'env[2].value=http://cloudprem-indexer.cloudprem.svc.cluster.local:7280' \
-  --set 'service.ports[0].name=dd-op-source-otel-grpc-address-port' \
-  --set 'service.ports[0].protocol=TCP' \
-  --set 'service.ports[0].port=4317' \
-  --set 'service.ports[0].targetPort=4317' \
-  --set 'service.ports[1].name=dd-op-source-otel-http-address-port' \
-  --set 'service.ports[1].protocol=TCP' \
-  --set 'service.ports[1].port=4318' \
-  --set 'service.ports[1].targetPort=4318' \
-  datadog/observability-pipelines-worker
-```
-
-> **Note**: The env var names (`DD_OP_SOURCE_OTEL_*`, `DD_OP_DESTINATION_*`) must match exactly what's configured in your Datadog UI pipeline.
-
-</details>
 
 ### 5. Generate traffic
 
@@ -198,9 +169,30 @@ This enables:
 - Route to multiple destinations
 - UI-managed configuration (edit pipeline in Datadog UI, worker auto-reloads)
 
-## OP Worker challenges 
- - If you view from log UI you can see the log and then the trace and metrics etc.
- - If you view the trace from the trace / APM part or Datadog, there is no way to select the cloudprem index and so you dont see the correlation ( even though its in the data ) .
+## OP Worker Challenges / Known Limitations
+
+### 1. CloudPrem Destination Strips Attributes (Bug)
+**Critical**: The OP Worker's `cloud_prem` destination strips ALL OTLP attributes. Using `observability-pipelines-worker tap --inputs-of dest-cloudprem` shows complete data entering the sink:
+```json
+{"trace_id": "4f8c0121717e...", "attributes": {"event": "request_start", "method": "GET"}, "resources": {"service.name": "sample-app"}}
+```
+But CloudPrem receives only:
+```json
+{"timestamp": "...", "message": "Request completed", "custom": {}}
+```
+All `trace_id`, `service`, `host`, and custom fields are lost. Compare to `datadog_logs` (SaaS) destination which preserves everything. This appears to be a bug in the `cloud_prem` sink's OTLP-to-CloudPrem format conversion.
+
+**To verify**: Use the OP CLI tap command to inspect events at each stage:
+```bash
+kubectl exec -n otel-demo <opw-pod> -- observability-pipelines-worker tap --inputs-of dest-cloudprem -l 1
+```
+
+### 2. Trace Correlation from APM
+- If you view from Log Explorer UI → you can see the log and then navigate to trace
+- If you view from Traces/APM → there's no way to select the CloudPrem index, so you don't see correlated logs
+
+### 3. Workaround
+For full attribute preservation with CloudPrem, use the **main branch** architecture (DD Agent → CloudPrem) instead of OP Worker → CloudPrem.
 
 ## Troubleshooting
 
