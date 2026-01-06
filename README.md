@@ -12,6 +12,7 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 - **Vendor-Agnostic** - Uses standard OpenTelemetry format (no Datadog-specific fields)
 - **OP Worker Integration** - Logs routed through Observability Pipelines for transformation
 - **Rich Span Attributes** - Database queries, HTTP details, timing metrics on every span
+- **RUM Integration** - Optional browser-side Real User Monitoring with session replay
 
 ## Architecture
 
@@ -75,8 +76,14 @@ cat > .env << 'EOF'
 DD_API_KEY=your-datadog-api-key
 DD_SITE=datadoghq.com
 DD_OP_PIPELINE_ID=your-pipeline-id-from-step-1
+
+# Optional: Enable RUM (Real User Monitoring)
+DD_RUM_APPLICATION_ID=your-rum-app-id
+DD_RUM_CLIENT_TOKEN=your-rum-client-token
 EOF
 ```
+
+> **RUM Setup**: To get RUM credentials, go to [Digital Experience → Add an Application](https://app.datadoghq.com/rum/application/create) in Datadog.
 
 ### 3. Deploy everything
 
@@ -113,6 +120,7 @@ curl localhost:30080/api/orders   # 9 logs, 6 spans
 | **Traces** | App → OTEL Collector → Datadog SaaS APM |
 | **Metrics** | App → OTEL Collector → Datadog SaaS Metrics |
 | **Logs** | App → OTEL Collector → **OP Worker** → CloudPrem |
+| **RUM** | Browser → Datadog SaaS RUM (optional) |
 
 ## Observability Per Request
 

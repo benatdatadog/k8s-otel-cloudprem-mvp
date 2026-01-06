@@ -90,8 +90,9 @@ if [ -z "$DD_OP_PIPELINE_ID" ]; then
     echo "  1. Go to https://app.datadoghq.com/observability-pipelines"
     echo "  2. Create New Pipeline with:"
     echo "     - Source: OpenTelemetry"
-    echo "     - Destination: Datadog Logs"
-    echo "     - Destination URL: http://cloudprem-indexer.cloudprem.svc.cluster.local:7280"
+    echo "       GRPC Address: \${SOURCE_OTEL_GRPC_ADDRESS}"
+    echo "     - Destination: Datadog CloudPrem"
+    echo "       Endpoint: \${DESTINATION_CLOUDPREM_ENDPOINT_URL}"
     echo "  3. Deploy and copy the Pipeline ID"
     echo "  4. Add to .env: DD_OP_PIPELINE_ID=your-pipeline-id"
     exit 1
@@ -162,20 +163,11 @@ helm upgrade --install opw \
     --set datadog.apiKey="$DD_API_KEY" \
     --set datadog.pipelineId="$DD_OP_PIPELINE_ID" \
     --set datadog.site="$DD_SITE" \
-    --set service.ports[0].name=otlp-grpc \
-    --set service.ports[0].protocol=TCP \
-    --set service.ports[0].port=4317 \
-    --set service.ports[0].targetPort=4317 \
-    --set service.ports[1].name=otlp-http \
-    --set service.ports[1].protocol=TCP \
-    --set service.ports[1].port=4318 \
-    --set service.ports[1].targetPort=4318 \
-    --set env[0].name=SOURCE_OTEL_GRPC_ADDRESS \
-    --set env[0].value=0.0.0.0:4317 \
-    --set env[1].name=SOURCE_OTEL_HTTP_ADDRESS \
-    --set env[1].value=0.0.0.0:4318 \
-    --set env[2].name=DESTINATION_CLOUDPREM_ENDPOINT_URL \
-    --set env[2].value=http://cloudprem-indexer.cloudprem.svc.cluster.local:7280 \
+    --set 'env[0].name=DD_OP_SOURCE_OTEL_GRPC_ADDRESS,env[0].value=0.0.0.0:4317' \
+    --set 'env[1].name=DD_OP_SOURCE_OTEL_HTTP_ADDRESS,env[1].value=0.0.0.0:4318' \
+    --set 'env[2].name=DD_OP_DESTINATION_CLOUDPREM_ENDPOINT_URL,env[2].value=http://cloudprem-indexer.cloudprem.svc.cluster.local:7280' \
+    --set 'service.ports[0].name=otlp-grpc,service.ports[0].protocol=TCP,service.ports[0].port=4317,service.ports[0].targetPort=4317' \
+    --set 'service.ports[1].name=otlp-http,service.ports[1].protocol=TCP,service.ports[1].port=4318,service.ports[1].targetPort=4318' \
     datadog/observability-pipelines-worker \
     --wait --timeout=300s
 echo -e "${GREEN}✓ OP Worker installed${NC}"
@@ -201,6 +193,18 @@ echo ""
 # Deploy sample app
 echo -e "${YELLOW}Deploying sample app...${NC}"
 kubectl apply -f k8s/sample-app.yaml
+
+# Inject RUM configuration if available
+if [ -n "$DD_RUM_APPLICATION_ID" ] && [ -n "$DD_RUM_CLIENT_TOKEN" ]; then
+    echo -e "${YELLOW}Configuring RUM...${NC}"
+    kubectl set env deployment/sample-app -n otel-demo \
+        DD_RUM_APPLICATION_ID="$DD_RUM_APPLICATION_ID" \
+        DD_RUM_CLIENT_TOKEN="$DD_RUM_CLIENT_TOKEN" \
+        DD_SITE="${DD_SITE:-datadoghq.com}"
+    echo -e "${GREEN}✓ RUM enabled${NC}"
+else
+    echo -e "${YELLOW}RUM not configured (set DD_RUM_APPLICATION_ID and DD_RUM_CLIENT_TOKEN in .env to enable)${NC}"
+fi
 echo -e "${GREEN}✓ Sample app deployed${NC}"
 echo ""
 

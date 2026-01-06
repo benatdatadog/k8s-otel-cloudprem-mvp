@@ -47,6 +47,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            # RUM Configuration (optional - set in .env)
+            - name: DD_RUM_APPLICATION_ID
+              value: ""
+            - name: DD_RUM_CLIENT_TOKEN
+              value: ""
+            - name: DD_SITE
+              value: "datadoghq.com"
           resources:
             requests:
               memory: "128Mi"
