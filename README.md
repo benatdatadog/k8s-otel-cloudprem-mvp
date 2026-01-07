@@ -22,22 +22,25 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 │  ┌──────────────┐         ┌──────────────────┐                               │
 │  │  Sample App  │──OTLP──▶│  OTEL Collector  │                               │
 │  │  (Python)    │  :4317  │                  │                               │
-│  └──────────────┘         └────────┬─────────┘                               │
-│                                    │                                          │
-│                                    │ OTLP (traces, metrics, logs)             │
-│                                    ▼                                          │
-│  ┌──────────────────────────────────────────┐                                │
-│  │           Datadog Agent (Operator)        │──Traces/Metrics──▶ DD SaaS    │
-│  │  • Receives ALL telemetry via OTLP :4317  │                                │
-│  │  • Forwards traces/metrics to DD SaaS     │                                │
-│  │  • Forwards logs to CloudPrem             │                                │
-│  └────────────────────┬─────────────────────┘                                │
-│                       │ Logs                                                  │
-│                       ▼                                                       │
-│  ┌──────────────────┐         ┌──────────────────┐                           │
-│  │    CloudPrem     │◀───────▶│   Datadog SaaS   │                           │
-│  │    (Indexer)     │         │  (Log Explorer)  │                           │
-│  └──────────────────┘         └──────────────────┘                           │
+│  │  + Web UI    │         └────────┬─────────┘                               │
+│  └──────┬───────┘                  │                                          │
+│         │                          │ OTLP (traces, metrics, logs)             │
+│         │ RUM SDK                  ▼                                          │
+│         │              ┌──────────────────────────────────────────┐          │
+│         │              │           Datadog Agent (Operator)        │          │
+│         │              │  • Receives ALL telemetry via OTLP :4317  │          │
+│         │              │  • Forwards traces/metrics to DD SaaS     │          │
+│         │              │  • Forwards logs to CloudPrem             │          │
+│         │              └────────────────────┬─────────────────────┘          │
+│         │                                   │ Logs                            │
+│         │                                   ▼                                 │
+│         │              ┌──────────────────┐         ┌──────────────────┐     │
+│         │              │    CloudPrem     │◀───────▶│   Datadog SaaS   │     │
+│         │              │    (Indexer)     │         │  (Log Explorer)  │     │
+│         │              └──────────────────┘         └────────┬─────────┘     │
+│         │                                                    │               │
+│         └──────────────────── RUM ──────────────────────────▶│               │
+│                                                              │               │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -45,10 +48,11 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 
 | Component | Purpose | Namespace |
 |-----------|---------|-----------|
-| **Sample App** | Python Flask app with OTEL instrumentation | otel-demo |
+| **Sample App** | Python Flask app with OTEL instrumentation + Web UI | otel-demo |
 | **OTEL Collector** | Receives OTLP, exports traces/metrics to DD SaaS, logs to DD Agent | otel-demo |
 | **Datadog Agent** | Collects container + OTLP logs, sends to CloudPrem | otel-demo |
 | **CloudPrem** | Self-hosted Datadog log indexer (reverse-connected to SaaS) | cloudprem |
+| **RUM SDK** | Browser-side monitoring (optional) - session replay, user interactions | Browser → DD SaaS |
 
 ## Prerequisites
 
