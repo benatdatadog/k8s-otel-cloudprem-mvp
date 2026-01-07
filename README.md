@@ -11,6 +11,7 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 - **Trace Correlation** - Logs include standard OTLP `trace_id`/`span_id` for APM correlation
 - **Vendor-Agnostic App** - Uses standard OpenTelemetry format (no Datadog-specific code)
 - **Rich Span Attributes** - Database queries, HTTP details, timing metrics on every span
+- **RUM Integration** - Optional browser-side Real User Monitoring with session replay
 
 ## Architecture
 
@@ -70,8 +71,14 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 cat > .env << 'EOF'
 DD_API_KEY=your-datadog-api-key-here
 DD_SITE=datadoghq.com
+
+# Optional: Enable RUM (Real User Monitoring)
+DD_RUM_APPLICATION_ID=your-rum-app-id
+DD_RUM_CLIENT_TOKEN=your-rum-client-token
 EOF
 ```
+
+> **RUM Setup**: To get RUM credentials, go to [Digital Experience → Add an Application](https://app.datadoghq.com/rum/application/create) in Datadog.
 
 ### 2. Deploy everything
 
@@ -134,6 +141,7 @@ All telemetry flows through the DD Agent via OTLP:
 | **Traces** | App → OTEL Collector → **DD Agent** → Datadog SaaS APM |
 | **Metrics** | App → OTEL Collector → **DD Agent** → Datadog SaaS Metrics |
 | **Logs** | App → OTEL Collector → **DD Agent** → CloudPrem |
+| **RUM** | Browser → Datadog SaaS RUM (optional) |
 
 ## Observability Per Request
 

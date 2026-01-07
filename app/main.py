@@ -63,7 +63,8 @@ set_logger_provider(logger_provider)
 otlp_log_exporter = OTLPLogExporter(endpoint=otlp_endpoint, insecure=True)
 logger_provider.add_log_record_processor(BatchLogRecordProcessor(otlp_log_exporter))
 
-# Create logging handler that sends to OTLP
+# Create OTEL logging handler - it automatically includes extra fields as OTLP attributes
+# via LoggingHandler._get_attributes() which extracts all non-reserved fields from log records
 otel_handler = LoggingHandler(level=logging.DEBUG, logger_provider=logger_provider)
 
 # Configure JSON logging format with trace correlation
@@ -329,6 +330,35 @@ HTML_TEMPLATE = '''
             text-decoration: none;
         }
     </style>
+    
+    <!-- Datadog RUM SDK -->
+    {% if rum_enabled %}
+    <script
+      src="https://www.datadoghq-browser-agent.com/us1/v5/datadog-rum.js"
+      type="text/javascript">
+    </script>
+    <script>
+      window.DD_RUM && window.DD_RUM.init({
+        clientToken: '{{ rum_client_token }}',
+        applicationId: '{{ rum_application_id }}',
+        site: '{{ dd_site }}',
+        service: 'sample-app-frontend',
+        env: 'demo',
+        version: '1.0.0',
+        sessionSampleRate: 100,
+        sessionReplaySampleRate: 100,
+        trackUserInteractions: true,
+        trackResources: true,
+        trackLongTasks: true,
+        defaultPrivacyLevel: 'allow',
+        allowedTracingUrls: [
+          { match: /localhost/, propagatorTypes: ["tracecontext", "datadog"] },
+          { match: window.location.origin, propagatorTypes: ["tracecontext", "datadog"] }
+        ]
+      });
+      window.DD_RUM && window.DD_RUM.startSessionReplayRecording();
+    </script>
+    {% endif %}
 </head>
 <body>
     <div class="container">
@@ -512,7 +542,18 @@ def home():
             "response_type": "html"
         })
         
-        return render_template_string(HTML_TEMPLATE)
+        # RUM configuration
+        rum_app_id = os.getenv("DD_RUM_APPLICATION_ID", "")
+        rum_client_token = os.getenv("DD_RUM_CLIENT_TOKEN", "")
+        rum_enabled = bool(rum_app_id and rum_client_token)
+        
+        return render_template_string(
+            HTML_TEMPLATE,
+            rum_enabled=rum_enabled,
+            rum_application_id=rum_app_id,
+            rum_client_token=rum_client_token,
+            dd_site=os.getenv("DD_SITE", "datadoghq.com")
+        )
 
 
 @app.route("/api")

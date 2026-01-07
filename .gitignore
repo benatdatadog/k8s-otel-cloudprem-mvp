@@ -33,3 +33,8 @@ secrets.yaml
 *.log
 tmp/
 
+
+# Terraform
+terraform/.terraform/
+*.tfstate
+*.tfstate.*

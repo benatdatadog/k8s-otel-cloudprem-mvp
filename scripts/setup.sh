@@ -153,6 +153,18 @@ echo ""
 # Deploy sample app
 echo -e "${YELLOW}Deploying sample app...${NC}"
 kubectl apply -f k8s/sample-app.yaml
+
+# Inject RUM configuration if available
+if [ -n "$DD_RUM_APPLICATION_ID" ] && [ -n "$DD_RUM_CLIENT_TOKEN" ]; then
+    echo -e "${YELLOW}Configuring RUM...${NC}"
+    kubectl set env deployment/sample-app -n otel-demo \
+        DD_RUM_APPLICATION_ID="$DD_RUM_APPLICATION_ID" \
+        DD_RUM_CLIENT_TOKEN="$DD_RUM_CLIENT_TOKEN" \
+        DD_SITE="${DD_SITE:-datadoghq.com}"
+    echo -e "${GREEN}✓ RUM enabled${NC}"
+else
+    echo -e "${YELLOW}RUM not configured (set DD_RUM_APPLICATION_ID and DD_RUM_CLIENT_TOKEN in .env to enable)${NC}"
+fi
 echo -e "${GREEN}✓ Sample app deployed${NC}"
 echo ""
 
