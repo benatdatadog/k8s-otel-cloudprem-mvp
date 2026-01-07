@@ -23,20 +23,22 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 │  ┌──────────────┐         ┌──────────────────┐                               │
 │  │  Sample App  │──OTLP──▶│  OTEL Collector  │──Traces/Metrics──▶ DD SaaS    │
 │  │  (Python)    │  :4317  │                  │                               │
-│  └──────────────┘         └────────┬─────────┘                               │
-│                                    │                                          │
-│                                    │ OTLP Logs                                │
-│                                    ▼                                          │
-│                           ┌──────────────────┐                               │
-│                           │    OP Worker     │  ← Transform / Filter / Route │
-│                           │  (Obs Pipelines) │                               │
-│                           └────────┬─────────┘                               │
-│                                    │                                          │
-│                                    ▼                                          │
-│  ┌──────────────────┐         ┌──────────────────┐                           │
-│  │    CloudPrem     │◀───────▶│   Datadog SaaS   │                           │
-│  │    (Indexer)     │         │  (Log Explorer)  │                           │
-│  └──────────────────┘         └──────────────────┘                           │
+│  │  + Web UI    │         └────────┬─────────┘                               │
+│  └──────┬───────┘                  │                                          │
+│         │                          │ OTLP Logs                                │
+│         │ RUM SDK                  ▼                                          │
+│         │                 ┌──────────────────┐                               │
+│         │                 │    OP Worker     │  ← Transform / Filter / Route │
+│         │                 │  (Obs Pipelines) │                               │
+│         │                 └────────┬─────────┘                               │
+│         │                          │                                          │
+│         │                          ▼                                          │
+│         │      ┌──────────────────┐         ┌──────────────────┐             │
+│         │      │    CloudPrem     │◀───────▶│   Datadog SaaS   │             │
+│         │      │    (Indexer)     │         │  (Log Explorer)  │             │
+│         │      └──────────────────┘         └────────┬─────────┘             │
+│         │                                            │                       │
+│         └────────────────── RUM ────────────────────▶│                       │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
