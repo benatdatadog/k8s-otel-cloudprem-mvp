@@ -101,6 +101,8 @@ curl localhost:30080/api/orders   # Get orders (9 logs, 6 spans)
 curl localhost:30080/api/slow     # Slow operation (latency tracing)
 curl localhost:30080/error        # Error simulation
 ```
+<img width="1090" height="775" alt="image" src="https://github.com/user-attachments/assets/08c47f5f-f8c1-473a-a7a8-b2a69cfce16c" />
+
 
 ### 4. Generate traffic
 
