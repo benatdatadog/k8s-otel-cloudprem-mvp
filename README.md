@@ -56,7 +56,7 @@ A proof-of-concept demonstrating OpenTelemetry instrumentation on Kubernetes wit
 
 ## Prerequisites
 
-- **Docker Desktop** with Kubernetes enabled (kubeadm)
+- **Docker Desktop** with Kubernetes enabled (kubeadm worked well with my M1 )
 - **kubectl** - `brew install kubectl`
 - **helm** - `brew install helm`
 - Datadog API Key
